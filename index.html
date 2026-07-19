@@ -32,70 +32,70 @@ body.dark {
   --tx:#181510; --tx2:#5c5646; --tx3:#a39d8c;
 }
 * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent }
-html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden; font-family:'Fraunces',Georgia,serif; font-size:calc(14px * var(--fs)); line-height:1.4 }
+html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden; font-family:'Fraunces',Georgia,serif; font-size:calc(16px * var(--fs)); line-height:1.4 }
 .disp { font-family:'Fraunces',Georgia,serif }
 .sans { font-family:'Inter',sans-serif }  /* reserved for tiny uppercase labels */
 #app { display:flex; flex-direction:column; height:100dvh; max-width:430px; margin:0 auto; background:var(--bg); position:relative; box-shadow:0 0 40px rgba(0,0,0,.3) }
 #hdr { padding:16px 18px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; gap:8px; border-bottom:1px solid var(--bd) }
 .hdr-left { display:flex; align-items:center; gap:10px }
-#backBtn { display:none; background:none; border:1px solid var(--bd); width:30px; height:30px; border-radius:50%; align-items:center; justify-content:center; cursor:pointer; font-size:14px; color:var(--tx) }
+#backBtn { display:none; background:none; border:1px solid var(--bd); width:30px; height:30px; border-radius:50%; align-items:center; justify-content:center; cursor:pointer; font-size:16px; color:var(--tx) }
 #backBtn.show { display:flex }
-.logo { font-family:'Fraunces',serif; font-weight:600; font-size:19px; letter-spacing:.01em }
+.logo { font-family:'Fraunces',serif; font-weight:600; font-size:21px; letter-spacing:.01em }
 .avatar-wrap { position:relative }
-.avatar { width:30px; height:30px; border-radius:50%; background:var(--sf2); border:1px solid var(--bd2); color:var(--tx); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; cursor:pointer }
+.avatar { width:30px; height:30px; border-radius:50%; background:var(--sf2); border:1px solid var(--bd2); color:var(--tx); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; cursor:pointer }
 .menu { position:absolute; top:38px; right:0; background:var(--sf); border:1px solid var(--bd); border-radius:2px; padding:4px; min-width:160px; box-shadow:0 12px 28px rgba(0,0,0,.4); display:none; flex-direction:column; z-index:200 }
 .menu.open { display:flex }
-.menu-item { display:flex; align-items:center; gap:10px; padding:10px 12px; font-size:12.5px; font-weight:500; cursor:pointer; background:none; border:none; color:var(--tx); text-align:left; width:100% }
+.menu-item { display:flex; align-items:center; gap:10px; padding:10px 12px; font-size:14.5px; font-weight:500; cursor:pointer; background:none; border:none; color:var(--tx); text-align:left; width:100% }
 .menu-item:hover { background:var(--sf2) }
 #screens { flex:1; overflow:hidden; position:relative }
 .screen { position:absolute; inset:0; overflow-y:auto; padding:0 18px 24px; display:none; flex-direction:column; gap:16px; -webkit-overflow-scrolling:touch }
 .screen.active { display:flex }
 
 .card { background:none; border:none; padding:0 }
-.btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:13px 18px; border-radius:var(--rs); border:none; font-weight:600; font-size:13px; cursor:pointer; font-family:'Inter',sans-serif; letter-spacing:.02em }
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:13px 18px; border-radius:var(--rs); border:none; font-weight:600; font-size:15px; cursor:pointer; font-family:'Inter',sans-serif; letter-spacing:.02em }
 .btn-primary { background:var(--am); color:#181510; width:100% }
 .btn-ghost { background:none; color:var(--tx); border:1px solid var(--bd2) }
 .btn-outline { background:transparent; color:var(--am); border:1px solid var(--am) }
 .row { display:flex; gap:8px }
 .row.between { justify-content:space-between; align-items:center }
-.chip { padding:6px 12px; border-radius:2px; background:none; border:1px solid var(--bd2); font-size:11px; color:var(--tx2); white-space:nowrap; cursor:pointer }
+.chip { padding:6px 12px; border-radius:2px; background:none; border:1px solid var(--bd2); font-size:13px; color:var(--tx2); white-space:nowrap; cursor:pointer }
 .chip.active { border-color:var(--am); color:var(--am) }
-.tag { padding:3px 8px; border-radius:2px; font-size:9.5px; font-weight:600; display:inline-flex; align-items:center; gap:3px; letter-spacing:.03em; text-transform:uppercase }
+.tag { padding:3px 8px; border-radius:2px; font-size:11px; font-weight:600; display:inline-flex; align-items:center; gap:3px; letter-spacing:.03em; text-transform:uppercase }
 .tag-michelin { background:none; color:var(--am); border:1px solid var(--am) }
 .tag-trend { background:var(--rdd); color:var(--rd) }
 .tag-reviewed { background:var(--sf2); color:var(--tx2); border:1px solid var(--bd2) }
-.muted { color:var(--tx2); font-size:11.5px }
+.muted { color:var(--tx2); font-size:13.5px }
 
 /* SETUP (home) */
 .meal-banner { padding:20px 0 4px }
-.meal-banner .m { font-size:10px; color:var(--tx3); text-transform:uppercase; letter-spacing:.12em }
-.meal-banner .t { font-family:'Fraunces'; font-size:25px; font-weight:600; margin-top:4px }
+.meal-banner .m { font-size:12px; color:var(--tx3); text-transform:uppercase; letter-spacing:.12em }
+.meal-banner .t { font-family:'Fraunces'; font-size:27px; font-weight:600; margin-top:4px }
 .setup-row { display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid var(--bd) }
 .setup-row:last-child { border-bottom:none }
-.setup-label { font-weight:500; font-size:13px }
+.setup-label { font-weight:500; font-size:15px }
 .pill-select { display:flex; gap:6px; flex-wrap:wrap }
 .stepper { display:flex; align-items:center; gap:16px }
-.stepper button { width:28px; height:28px; border-radius:50%; border:1px solid var(--bd2); background:var(--sf2); color:var(--tx); font-size:15px; cursor:pointer; line-height:1 }
-#peopleVal { font-family:'Fraunces'; font-weight:600; font-size:15px; min-width:14px; text-align:center }
+.stepper button { width:28px; height:28px; border-radius:50%; border:1px solid var(--bd2); background:var(--sf2); color:var(--tx); font-size:17px; cursor:pointer; line-height:1 }
+#peopleVal { font-family:'Fraunces'; font-weight:600; font-size:17px; min-width:14px; text-align:center }
 
 /* SEARCH / CURATION */
-.search-title { font-family:'Fraunces'; font-size:19px; font-weight:600; padding-top:18px }
-.search-sub { font-size:10px; color:var(--tx3); letter-spacing:.1em; text-transform:uppercase; margin-top:2px }
+.search-title { font-family:'Fraunces'; font-size:21px; font-weight:600; padding-top:18px }
+.search-sub { font-size:12px; color:var(--tx3); letter-spacing:.1em; text-transform:uppercase; margin-top:2px }
 .reason-log { display:flex; flex-direction:column; gap:7px; min-height:118px }
-.reason-line { display:flex; gap:9px; align-items:center; font-size:12.5px; color:var(--tx2); opacity:0; transform:translateX(-6px); transition:all .3s ease }
+.reason-line { display:flex; gap:9px; align-items:center; font-size:14.5px; color:var(--tx2); opacity:0; transform:translateX(-6px); transition:all .3s ease }
 .reason-line.in { opacity:1; transform:none }
 .reason-line.done { color:var(--tx3) }
 .reason-line.active { color:var(--tx); font-weight:500 }
-.rmark { width:14px; height:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px }
+.rmark { width:14px; height:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:13px }
 .reason-line.done .rmark { color:var(--am) }
 .rspin { width:11px; height:11px; border:1.5px solid var(--bd2); border-top-color:var(--am); border-radius:50%; animation:spin .7s linear infinite }
 @keyframes spin { to { transform:rotate(360deg) } }
 
 .pool-wrap { border-top:1px solid var(--bd); padding-top:14px; display:flex; flex-direction:column; gap:10px }
-.pool-count { font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--tx3); text-align:center }
-.pool-count b { color:var(--am); font-family:'Fraunces'; font-size:13px }
+.pool-count { font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--tx3); text-align:center }
+.pool-count b { color:var(--am); font-family:'Fraunces'; font-size:15px }
 .pool { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; min-height:96px; align-content:flex-start }
-.token { padding:3px 4px; border:none; font-size:11px; display:inline-flex; gap:6px; align-items:center; background:none; opacity:0; transform:translateY(10px) scale(.85); transition:all .4s cubic-bezier(.2,.8,.3,1) }
+.token { padding:3px 4px; border:none; font-size:13px; display:inline-flex; gap:6px; align-items:center; background:none; opacity:0; transform:translateY(10px) scale(.85); transition:all .4s cubic-bezier(.2,.8,.3,1) }
 .token.in { opacity:1; transform:none }
 .token.dim { opacity:.16 }
 .token.win { color:var(--am); font-style:italic; transform:scale(1.04) }
@@ -104,46 +104,67 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .dot-michelin { background:var(--am) }
 .dot-trend { background:var(--rd) }
 
-.finalists { display:none; gap:8px; justify-content:center; flex-wrap:wrap; width:100% }
+.finalists { display:none; flex-direction:column; gap:2px; width:100% }
 .finalists.show { display:flex }
-.finalist-card { width:80px; opacity:0; transform:translateY(14px) scale(.9); transition:all .45s cubic-bezier(.2,.8,.3,1) }
-.finalist-card.in { opacity:1; transform:translateY(0) scale(1) }
-.finalist-photo { width:80px; height:80px; border-radius:6px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:28px; border:1px solid var(--bd); position:relative }
-.finalist-name { font-size:9.5px; text-align:center; margin-top:5px; font-weight:600; line-height:1.25 }
+.finalist-row { display:flex; gap:13px; align-items:center; padding:12px 2px; border-bottom:1px solid var(--bd); cursor:pointer; opacity:0; transform:translateY(10px); transition:all .45s cubic-bezier(.2,.8,.3,1) }
+.finalist-row:last-child { border-bottom:none }
+.finalist-row.in { opacity:1; transform:translateY(0) }
+.finalist-row:active { background:var(--sf2) }
+.finalist-rank { font-family:'Fraunces'; font-weight:600; color:var(--am); font-size:16px; width:16px; flex-shrink:0; text-align:center }
+.finalist-thumb { width:68px; height:68px; border-radius:6px; overflow:hidden; flex-shrink:0; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:26px; border:1px solid var(--bd) }
+.finalist-thumb img { width:100%; height:100%; object-fit:cover; display:block }
+.finalist-info { flex:1; min-width:0 }
+.finalist-name { font-family:'Fraunces'; font-weight:600; font-size:17px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.finalist-desc { font-size:13px; color:var(--tx2); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.finalist-tagrow { display:flex; gap:5px; margin-top:6px; flex-wrap:wrap }
+.finalist-chevron { color:var(--tx3); font-size:15px; flex-shrink:0 }
 .shuffle-actions { display:flex; gap:10px; opacity:0; transition:opacity .4s ease; pointer-events:none }
 .shuffle-actions.show { opacity:1; pointer-events:auto }
 .shuffle-actions .btn { flex:1 }
-.skip-hint { text-align:center; font-size:10px; color:var(--tx3); letter-spacing:.06em }
+.skip-hint { text-align:center; font-size:12px; color:var(--tx3); letter-spacing:.06em }
 
 /* PICK */
-.pick-photo { height:210px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:48px }
+.pick-photo { height:210px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:50px; overflow:hidden }
+.pick-photo img { width:100%; height:100%; object-fit:cover; display:block }
 .pick-card { background:none }
 .pick-body { padding:16px 2px 0; display:flex; flex-direction:column; gap:11px }
-.pick-name { font-family:'Fraunces'; font-weight:600; font-size:21px }
-.pick-meta { display:flex; gap:12px; font-size:11.5px; color:var(--tx2); flex-wrap:wrap }
+.pick-name { font-family:'Fraunces'; font-weight:600; font-size:23px }
+.pick-description { font-size:14px; color:var(--tx2); margin-top:-6px }
+.pick-meta { display:flex; gap:12px; font-size:13.5px; color:var(--tx2); flex-wrap:wrap }
 .tag-row { display:flex; gap:6px; flex-wrap:wrap }
-.why { border-left:2px solid var(--am); padding:2px 0 2px 10px; font-size:11.5px; color:var(--tx2); font-style:italic }
+.why { border-left:2px solid var(--am); padding:2px 0 2px 10px; font-size:13.5px; color:var(--tx2); font-style:italic }
+
+/* Detail sheet — tap-through from a listing row */
+.detail-photo { height:220px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:52px; overflow:hidden; margin:-22px -20px 16px }
+.detail-photo img { width:100%; height:100%; object-fit:cover; display:block }
+.detail-name { font-family:'Fraunces'; font-weight:600; font-size:22px }
+.detail-desc { font-size:14px; color:var(--tx2); margin-top:3px }
+.detail-meta { display:flex; gap:12px; font-size:13.5px; color:var(--tx2); flex-wrap:wrap; margin-top:10px }
+.detail-why { border-left:2px solid var(--am); padding:6px 0 6px 12px; font-size:14px; color:var(--tx2); font-style:italic; margin-top:14px }
+.detail-maps-link { display:block; text-align:center; margin-top:16px; font-size:13px; color:var(--am); text-decoration:none }
 .action-row { display:flex; gap:8px }
 .action-row .btn { flex:1 }
 
 /* GROUP */
 .swipe-stage { position:relative; height:320px; display:flex; align-items:center; justify-content:center }
 .swipe-card { position:absolute; width:100%; max-width:320px; height:300px; border-radius:2px; overflow:hidden; border:none; background:none; transition:transform .3s ease, opacity .3s ease }
-.swipe-photo { height:62%; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:42px }
+.swipe-photo { height:62%; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:44px; overflow:hidden }
+.swipe-photo img { width:100%; height:100%; object-fit:cover; display:block }
 .swipe-info { padding:14px 16px }
+.swipe-desc { font-size:13px; color:var(--tx2); margin-top:2px }
 .swipe-actions { display:flex; justify-content:center; gap:24px }
-.round-btn { width:52px; height:52px; border-radius:50%; border:1px solid var(--bd2); font-size:19px; display:flex; align-items:center; justify-content:center; cursor:pointer; background:var(--sf) }
+.round-btn { width:52px; height:52px; border-radius:50%; border:1px solid var(--bd2); font-size:21px; display:flex; align-items:center; justify-content:center; cursor:pointer; background:var(--sf) }
 .round-btn.no { color:var(--rd) }
 .round-btn.yes { color:var(--am); border-color:var(--am) }
-.participant-pill { display:flex; align-items:center; gap:6px; background:var(--sf2); border:1px solid var(--bd2); border-radius:2px; padding:5px 11px; font-size:11px; font-weight:500 }
+.participant-pill { display:flex; align-items:center; gap:6px; background:var(--sf2); border:1px solid var(--bd2); border-radius:2px; padding:5px 11px; font-size:13px; font-weight:500 }
 
 /* HISTORY */
 .hist-item { display:flex; gap:14px; align-items:center; background:none; border:none; border-bottom:1px solid var(--bd); padding:12px 2px }
-.hist-thumb { width:38px; height:38px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0 }
+.hist-thumb { width:38px; height:38px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0 }
 .stat-grid { display:grid; grid-template-columns:1fr 1fr 1fr }
 .stat-box { padding:6px 6px 16px; text-align:center; border-bottom:1px solid var(--bd) }
-.stat-box .n { font-family:'Fraunces'; font-weight:600; font-size:20px; color:var(--am) }
-.stat-box .l { font-size:9px; color:var(--tx3); margin-top:2px; letter-spacing:.08em; text-transform:uppercase }
+.stat-box .n { font-family:'Fraunces'; font-weight:600; font-size:22px; color:var(--am) }
+.stat-box .l { font-size:11px; color:var(--tx3); margin-top:2px; letter-spacing:.08em; text-transform:uppercase }
 
 /* SETTINGS */
 .set-row { display:flex; justify-content:space-between; align-items:center; padding:13px 0; border-bottom:1px solid var(--bd) }
@@ -158,11 +179,11 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .modal { background:var(--sf); border-top:1px solid var(--bd); padding:24px 20px 32px; width:100%; max-width:430px; margin:0 auto; animation:sup .25s ease }
 @keyframes sup { from{transform:translateY(100%)} to{transform:translateY(0)} }
 .mh { width:32px; height:2px; background:var(--bd2); margin:0 auto 18px }
-#toast { position:fixed; top:16px; left:50%; transform:translateX(-50%) translateY(-60px); background:var(--sf2); border:1px solid var(--bd2); border-radius:2px; padding:9px 18px; font-size:12px; z-index:600; transition:transform .28s ease; white-space:nowrap; max-width:88vw; text-align:center; letter-spacing:.02em }
+#toast { position:fixed; top:16px; left:50%; transform:translateX(-50%) translateY(-60px); background:var(--sf2); border:1px solid var(--bd2); border-radius:2px; padding:9px 18px; font-size:14px; z-index:600; transition:transform .28s ease; white-space:nowrap; max-width:88vw; text-align:center; letter-spacing:.02em }
 #toast.show { transform:translateX(-50%) translateY(0) }
 #toast.ok { border-color:var(--am); color:var(--am) }
 .thumbs-row { display:flex; gap:16px; justify-content:center; margin-top:12px }
-.thumb-btn { width:56px; height:56px; border-radius:50%; border:1px solid var(--bd2); background:var(--sf); font-size:23px; cursor:pointer }
+.thumb-btn { width:56px; height:56px; border-radius:50%; border:1px solid var(--bd2); background:var(--sf); font-size:25px; cursor:pointer }
 .thumb-btn.picked-up { border-color:var(--am); color:var(--am) }
 .thumb-btn.picked-down { border-color:var(--rd); color:var(--rd) }
 </style>
@@ -247,11 +268,12 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 
     <!-- PICK -->
     <div class="screen" id="screen-pick">
-      <div style="font-weight:600;font-size:13px;letter-spacing:.03em;padding-top:16px">TODAY'S PICK</div>
+      <div style="font-weight:600;font-size:15px;letter-spacing:.03em;padding-top:16px">TODAY'S PICK</div>
       <div class="pick-card">
         <div class="pick-photo" id="pickPhoto">🍜</div>
         <div class="pick-body">
           <div class="pick-name" id="pickName">Nama Ramen Bar</div>
+          <div class="pick-description" id="pickDescription"></div>
           <div class="tag-row" id="pickTags"></div>
           <div class="pick-meta" id="pickMeta"></div>
           <div class="why" id="pickWhy">Dinner · nearby · trending</div>
@@ -267,7 +289,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
     <!-- GROUP -->
     <div class="screen" id="screen-group">
       <div class="row between" style="padding-top:16px">
-        <div style="font-weight:600;font-size:13px;letter-spacing:.03em">TOGETHER</div>
+        <div style="font-weight:600;font-size:15px;letter-spacing:.03em">TOGETHER</div>
         <div class="participant-pill" id="turnPill">Chee Wee</div>
       </div>
       <div class="swipe-stage" id="swipeStage"></div>
@@ -280,23 +302,23 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 
     <!-- HISTORY -->
     <div class="screen" id="screen-history">
-      <div style="font-weight:600;font-size:13px;letter-spacing:.03em;padding-top:16px">HISTORY</div>
+      <div style="font-weight:600;font-size:15px;letter-spacing:.03em;padding-top:16px">HISTORY</div>
       <div class="stat-grid">
         <div class="stat-box"><div class="n">27</div><div class="l">Picks</div></div>
         <div class="stat-box"><div class="n">18s</div><div class="l">Avg time</div></div>
         <div class="stat-box"><div class="n">83%</div><div class="l">Satisfied</div></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <div class="hist-item"><div class="hist-thumb">🍜</div><div style="flex:1"><div style="font-weight:600;font-size:13px">Nama Ramen Bar</div><div class="muted">Today · Dinner</div></div><div style="font-size:16px">👍</div></div>
-        <div class="hist-item"><div class="hist-thumb">🥗</div><div style="flex:1"><div style="font-weight:600;font-size:13px">Greenhouse Salad Co.</div><div class="muted">Yesterday · Lunch</div></div><div style="font-size:16px">👍</div></div>
-        <div class="hist-item"><div class="hist-thumb">🍛</div><div style="flex:1"><div style="font-weight:600;font-size:13px">Curry House 88</div><div class="muted">2d ago · Dinner</div></div><div style="font-size:16px">👎</div></div>
-        <div class="hist-item"><div class="hist-thumb">☕</div><div style="flex:1"><div style="font-weight:600;font-size:13px">Tiny Bean Cafe</div><div class="muted">3d ago · Breakfast</div></div><div style="font-size:16px">👍</div></div>
+        <div class="hist-item"><div class="hist-thumb">🍜</div><div style="flex:1"><div style="font-weight:600;font-size:15px">Nama Ramen Bar</div><div class="muted">Today · Dinner</div></div><div style="font-size:18px">👍</div></div>
+        <div class="hist-item"><div class="hist-thumb">🥗</div><div style="flex:1"><div style="font-weight:600;font-size:15px">Greenhouse Salad Co.</div><div class="muted">Yesterday · Lunch</div></div><div style="font-size:18px">👍</div></div>
+        <div class="hist-item"><div class="hist-thumb">🍛</div><div style="flex:1"><div style="font-weight:600;font-size:15px">Curry House 88</div><div class="muted">2d ago · Dinner</div></div><div style="font-size:18px">👎</div></div>
+        <div class="hist-item"><div class="hist-thumb">☕</div><div style="flex:1"><div style="font-weight:600;font-size:15px">Tiny Bean Cafe</div><div class="muted">3d ago · Breakfast</div></div><div style="font-size:18px">👍</div></div>
       </div>
     </div>
 
     <!-- SETTINGS -->
     <div class="screen" id="screen-settings">
-      <div style="font-weight:600;font-size:13px;letter-spacing:.03em;padding-top:16px">SETTINGS</div>
+      <div style="font-weight:600;font-size:15px;letter-spacing:.03em;padding-top:16px">SETTINGS</div>
       <div class="card">
         <div class="set-row"><div>Diet</div><div class="muted">None set</div></div>
         <div class="set-row"><div>Check-in ping</div><div class="switch on" id="checkinSwitch" onclick="toggleSwitch(this)"><div class="knob"></div></div></div>
@@ -310,10 +332,24 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 
 <div id="toast"></div>
 
+<div class="ov" id="detailModal" onclick="if(event.target===this) closeDetail()">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="detail-photo" id="detailPhoto">🍽️</div>
+    <div class="detail-name disp" id="detailName">—</div>
+    <div class="detail-desc" id="detailDesc"></div>
+    <div class="tag-row" id="detailTags" style="margin-top:8px"></div>
+    <div class="detail-meta" id="detailMeta"></div>
+    <div class="detail-why" id="detailWhy"></div>
+    <a class="detail-maps-link" id="detailMapsLink" href="#" target="_blank" rel="noopener">View on Google Maps ↗</a>
+    <button class="btn btn-ghost" style="width:100%;margin-top:16px" onclick="closeDetail()">Close</button>
+  </div>
+</div>
+
 <div class="ov" id="feedbackModal">
   <div class="modal">
     <div class="mh"></div>
-    <div style="text-align:center;font-weight:600;font-size:15px" class="disp" id="feedbackName">How was Nama Ramen Bar?</div>
+    <div style="text-align:center;font-weight:600;font-size:17px" class="disp" id="feedbackName">How was Nama Ramen Bar?</div>
     <div class="muted" style="text-align:center">Sent ~2hrs after your pick</div>
     <div class="thumbs-row">
       <button class="thumb-btn" id="thumbDown" onclick="rateThumb(false)">👎</button>
@@ -352,6 +388,51 @@ function go(id) {
 // ---- Live backend config ----
 // After deploying eatwhat-worker (see its README), paste your Worker URL here:
 const API_BASE = 'https://eatwhat-api.ncheewee.workers.dev';
+
+// Builds a proxied photo URL through the Worker (keeps the Places API key server-side).
+// Returns null if the venue has no photo — callers fall back to the emoji block.
+function photoUrl(item, w){
+  if (!item || !item.photoRef) return null;
+  return `${API_BASE}/api/photo?ref=${encodeURIComponent(item.photoRef)}&w=${w||300}`;
+}
+
+// Renders a photo <img> if available, else the emoji fallback block — used by
+// finalist rows, the pick card, and swipe cards so they all degrade the same way.
+function photoOrEmojiHTML(item, w){
+  const url = photoUrl(item, w);
+  return url
+    ? `<img src="${url}" alt="${escapeHtml(item.name)}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${item.emoji}'}))">`
+    : (item.emoji || '🍽️');
+}
+
+function escapeHtml(s){
+  return String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Detail sheet — full context for why a place made the shortlist, plus a Maps link
+let detailItems = [];
+function openDetail(idx){
+  const item = detailItems[idx];
+  if (!item) return;
+  document.getElementById('detailPhoto').innerHTML = photoOrEmojiHTML(item, 600);
+  document.getElementById('detailName').textContent = item.name;
+  document.getElementById('detailDesc').textContent = item.description || item.meta || '';
+  document.getElementById('detailTags').innerHTML = (item.tags||[]).map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join('');
+  document.getElementById('detailMeta').innerHTML = (item.meta||'').split(' · ').map(m=>`<span>${m}</span>`).join('');
+  document.getElementById('detailWhy').textContent = item.why || '';
+  const mapsLink = document.getElementById('detailMapsLink');
+  if (item.placeId){
+    mapsLink.href = `https://www.google.com/maps/place/?q=place_id:${item.placeId}`;
+    mapsLink.style.display = '';
+  } else {
+    mapsLink.style.display = 'none';
+  }
+  document.getElementById('detailModal').classList.add('open');
+}
+function closeDetail(){
+  document.getElementById('detailModal').classList.remove('open');
+}
+
 const DEFAULT_LOCATION = { lat: 1.2839, lng: 103.8517 }; // Raffles Place, SG — used if location is denied/unavailable
 
 // Fallback data if the API isn't configured yet, or a call fails — keeps the mockup usable standalone
@@ -535,10 +616,20 @@ function finishSearch(usingMock){
     setTimeout(()=>{
       pool.style.display='none';
       finalistsEl.classList.add('show');
+      detailItems = FINALISTS;
       FINALISTS.forEach((f,i)=>{
         const el = document.createElement('div');
-        el.className='finalist-card';
-        el.innerHTML = `<div class="finalist-photo">${f.emoji}</div><div class="finalist-name">${f.name}</div>`;
+        el.className='finalist-row';
+        el.onclick = () => openDetail(i);
+        el.innerHTML = `
+          <div class="finalist-rank">${i+1}</div>
+          <div class="finalist-thumb">${photoOrEmojiHTML(f, 160)}</div>
+          <div class="finalist-info">
+            <div class="finalist-name">${escapeHtml(f.name)}</div>
+            <div class="finalist-desc">${escapeHtml(f.description || f.meta || '')}</div>
+            <div class="finalist-tagrow">${(f.tags||[]).slice(0,2).map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join('')}</div>
+          </div>
+          <div class="finalist-chevron">›</div>`;
         finalistsEl.appendChild(el);
         setTimeout(()=>el.classList.add('in'), i*130);
       });
@@ -576,7 +667,8 @@ function renderPick(){
 function paintPick(){
   const c = FINALISTS[pickIdx % FINALISTS.length];
   document.getElementById('pickName').textContent = c.name;
-  document.getElementById('pickPhoto').textContent = c.emoji;
+  document.getElementById('pickPhoto').innerHTML = photoOrEmojiHTML(c, 500);
+  document.getElementById('pickDescription').textContent = c.description || '';
   document.getElementById('pickTags').innerHTML = c.tags.map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join('');
   document.getElementById('pickMeta').innerHTML = c.meta.split(' · ').map(m=>`<span>${m}</span>`).join('');
   document.getElementById('pickWhy').textContent = c.why;
@@ -621,7 +713,7 @@ function renderSwipeCard(){
     const liked = FINALISTS.map(d=>d.name).filter(name => PARTICIPANTS.every(p => swipeResults[p].includes(name)));
     const winner = liked[0] || FINALISTS[Math.floor(Math.random()*FINALISTS.length)].name;
     stage.innerHTML = `<div class="pick-card" style="width:100%"><div class="pick-photo">✓</div><div class="pick-body" style="align-items:center;text-align:center">
-      <div style="font-weight:500;font-size:11.5px;color:var(--tx2);letter-spacing:.03em">EVERYONE AGREED</div>
+      <div style="font-weight:500;font-size:13.5px;color:var(--tx2);letter-spacing:.03em">EVERYONE AGREED</div>
       <div class="pick-name">${winner}</div>
       <button class="btn btn-primary" onclick="go('setup');toast('Accepted','ok')">Let's go</button>
     </div></div>`;
@@ -631,7 +723,7 @@ function renderSwipeCard(){
   }
   document.querySelector('.swipe-actions').style.display = 'flex';
   const d = FINALISTS[swipeIdx];
-  stage.innerHTML = `<div class="swipe-card" id="curCard"><div class="swipe-photo">${d.emoji}</div><div class="swipe-info"><div style="font-weight:600;font-size:14px" class="disp">${d.name}</div><div class="muted">${d.meta}</div></div></div>`;
+  stage.innerHTML = `<div class="swipe-card" id="curCard"><div class="swipe-photo">${photoOrEmojiHTML(d, 500)}</div><div class="swipe-info"><div style="font-weight:600;font-size:18px" class="disp">${escapeHtml(d.name)}</div><div class="swipe-desc">${escapeHtml(d.description || d.meta || '')}</div></div></div>`;
   document.getElementById('swipeProgress').textContent = `${swipeIdx+1}/${FINALISTS.length} · ${PARTICIPANTS[participantIdx]}`;
 }
 function swipeCard(liked){

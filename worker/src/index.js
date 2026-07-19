@@ -19,7 +19,7 @@ import { buildMichelinIndex, lookupMichelin } from "./michelin.js";
 const CACHE_TTL_SECONDS = 60 * 60 * 12; // 12h — Michelin/trending data doesn't move fast
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
@@ -30,6 +30,11 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/photo" && request.method === "GET") {
+      return handlePhoto(url, env);
+    }
+
     if (url.pathname !== "/api/search" || request.method !== "POST") {
       return json({ error: "Not found. POST /api/search" }, 404);
     }
@@ -86,6 +91,34 @@ function json(obj, status = 200) {
   });
 }
 
+// Proxies Google Places photo media so the API key never reaches the client.
+// GET /api/photo?ref=<url-encoded photo resource name>&w=400
+async function handlePhoto(url, env) {
+  const ref = url.searchParams.get("ref");
+  const w = Math.min(Number(url.searchParams.get("w")) || 400, 1600);
+  if (!ref) return new Response("Missing ref", { status: 400, headers: CORS_HEADERS });
+  if (!env.GOOGLE_PLACES_API_KEY) return new Response("Not configured", { status: 500, headers: CORS_HEADERS });
+
+  const photoName = decodeURIComponent(ref);
+  // Guard against anything except a genuine Places photo resource path
+  if (!/^places\/[^/]+\/photos\/[^/?#]+$/.test(photoName)) {
+    return new Response("Invalid ref", { status: 400, headers: CORS_HEADERS });
+  }
+
+  const upstream = `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=${w}&key=${env.GOOGLE_PLACES_API_KEY}`;
+  const res = await fetch(upstream);
+  if (!res.ok) return new Response("Photo fetch failed", { status: res.status, headers: CORS_HEADERS });
+
+  return new Response(res.body, {
+    status: 200,
+    headers: {
+      "Content-Type": res.headers.get("Content-Type") || "image/jpeg",
+      "Cache-Control": "public, max-age=604800", // 7 days — photos rarely change
+      ...CORS_HEADERS,
+    },
+  });
+}
+
 async function runPipeline({ lat, lng, radiusKm, budget, partySize, env }) {
   if (!env.GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
@@ -121,7 +154,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, env }) {
     mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin))
   );
   const ranked = rankVenues(merged);
-  const pool = ranked.slice(0, 8).map((v, i) => ({ ...v, win: i < 4 }));
+  const pool = ranked.slice(0, 8).map((v, i) => ({ ...v, win: i < 3 }));
 
   return { pool, guideYear: michelin.year };
 }
@@ -149,7 +182,9 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
         "places.location",
         "places.currentOpeningHours.openNow",
         "places.primaryType",
+        "places.primaryTypeDisplayName",
         "places.types",
+        "places.photos",
       ].join(","),
     },
     body: JSON.stringify({
@@ -182,7 +217,9 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
       openNow: p.currentOpeningHours?.openNow ?? null,
       distanceKm: haversineKm(lat, lng, p.location?.latitude, p.location?.longitude),
       primaryType: p.primaryType || "restaurant",
+      typeLabel: p.primaryTypeDisplayName?.text || null,
       emoji: emojiForType(p.primaryType, p.types),
+      photoRef: p.photos?.[0]?.name || null, // e.g. "places/ChIJ.../photos/AWU5..."
     }));
 }
 
@@ -274,14 +311,39 @@ function mergeVenue(v, hype, mich) {
   if (v.openNow != null) metaParts.push(v.openNow ? "Open now" : "Closed now");
 
   return {
+    placeId: v.id || null,
     name: v.name,
     emoji: v.emoji,
+    photoRef: v.photoRef || null,
+    description: buildDescription(v),
     source,
     tags,
     meta: metaParts.join(" · "),
     why: michWhy(mich, v) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
     _score: scoreVenue(v, hype, mich),
   };
+}
+
+// Short "glance" line, styled like a Google listing snippet:
+// "Ramen restaurant · $$ · 4.6 (1.2k) · 0.4km"
+function buildDescription(v) {
+  const parts = [];
+  parts.push(v.typeLabel || titleCase(v.primaryType) || "Restaurant");
+  parts.push(v.priceSymbol);
+  if (v.rating) parts.push(`${v.rating.toFixed(1)}★ (${formatCount(v.reviewCount)})`);
+  if (v.distanceKm != null) parts.push(`${v.distanceKm}km`);
+  return parts.join(" · ");
+}
+
+function titleCase(s) {
+  if (!s) return null;
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatCount(n) {
+  if (!n) return "0";
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
 }
 
 function michWhy(mich, v) {
@@ -314,12 +376,12 @@ function rankVenues(venues) {
 // ---------- Fallback demo data (used if keys are missing or calls fail) ----------
 
 const MOCK_POOL = [
-  { name: "Nama Ramen Bar", emoji: "🍜", source: "trend", win: true, tags: ["Trending", "@makanmakan"], meta: "4.6 · 0.4km · $$ · Till 10pm", why: "Trending this week · 0.4km away" },
-  { name: "Curry House 88", emoji: "🍛", source: "michelin", win: true, tags: ["Michelin 2026"], meta: "4.5 · 0.9km · $$ · Till 9:30pm", why: "Michelin-selected · fits your budget" },
-  { name: "Sakura Sushi Table", emoji: "🍣", source: "michelin", win: true, tags: ["Michelin 2026"], meta: "4.6 · 1.8km · $$ · Till 10:30pm", why: "Highly rated · Michelin list" },
-  { name: "Tiny Bean Cafe", emoji: "☕", source: "reviews", win: true, tags: ["@kaya.diaries"], meta: "4.7 · 0.3km · $$ · Till 10pm", why: "Top reviews nearby · closest" },
-  { name: "Pho Real", emoji: "🍲", source: "trend", win: false, tags: ["Trending"], meta: "4.4 · 1.5km · $$ · Till 9pm", why: "Rising in your area" },
-  { name: "Greenhouse Salad Co.", emoji: "🥗", source: "reviews", win: false, tags: ["Open now"], meta: "4.3 · 1.2km · $ · Till 9pm", why: "Lighter option" },
-  { name: "Warong Selera Kita", emoji: "🥘", source: "reviews", win: false, tags: ["Open now"], meta: "4.4 · 0.7km · $ · Till 10pm", why: "Halal-friendly" },
-  { name: "The Char Grill", emoji: "🍔", source: "trend", win: false, tags: ["@makanmakan"], meta: "4.2 · 1.1km · $$ · Till 11pm", why: "Group portions" },
+  { placeId: null, name: "Nama Ramen Bar", emoji: "🍜", photoRef: null, description: "Ramen restaurant · $$ · 4.6★ (1.2k) · 0.4km", source: "trend", win: true, tags: ["Trending", "@makanmakan"], meta: "4.6 · 0.4km · $$ · Till 10pm", why: "Trending this week · 0.4km away" },
+  { placeId: null, name: "Curry House 88", emoji: "🍛", photoRef: null, description: "Indian restaurant · $$ · 4.5★ (860) · 0.9km", source: "michelin", win: true, tags: ["Bib Gourmand 2025"], meta: "4.5 · 0.9km · $$ · Till 9:30pm", why: "Bib Gourmand · fits your budget" },
+  { placeId: null, name: "Sakura Sushi Table", emoji: "🍣", photoRef: null, description: "Sushi restaurant · $$ · 4.6★ (2.1k) · 1.8km", source: "michelin", win: true, tags: ["MICHELIN ★ 2025"], meta: "4.6 · 1.8km · $$ · Till 10:30pm", why: "MICHELIN starred · highly rated" },
+  { placeId: null, name: "Tiny Bean Cafe", emoji: "☕", photoRef: null, description: "Cafe · $$ · 4.7★ (410) · 0.3km", source: "reviews", win: false, tags: ["@kaya.diaries"], meta: "4.7 · 0.3km · $$ · Till 10pm", why: "Top reviews nearby · closest" },
+  { placeId: null, name: "Pho Real", emoji: "🍲", photoRef: null, description: "Vietnamese restaurant · $$ · 4.4★ (620) · 1.5km", source: "trend", win: false, tags: ["Trending"], meta: "4.4 · 1.5km · $$ · Till 9pm", why: "Rising in your area" },
+  { placeId: null, name: "Greenhouse Salad Co.", emoji: "🥗", photoRef: null, description: "Salad restaurant · $ · 4.3★ (310) · 1.2km", source: "reviews", win: false, tags: ["Open now"], meta: "4.3 · 1.2km · $ · Till 9pm", why: "Lighter option" },
+  { placeId: null, name: "Warong Selera Kita", emoji: "🥘", photoRef: null, description: "Indonesian restaurant · $ · 4.4★ (540) · 0.7km", source: "reviews", win: false, tags: ["Open now"], meta: "4.4 · 0.7km · $ · Till 10pm", why: "Halal-friendly" },
+  { placeId: null, name: "The Char Grill", emoji: "🍔", photoRef: null, description: "Barbecue restaurant · $$ · 4.2★ (280) · 1.1km", source: "trend", win: false, tags: ["@makanmakan"], meta: "4.2 · 1.1km · $$ · Till 11pm", why: "Group portions" },
 ];
