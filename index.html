@@ -146,6 +146,19 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 /* Detail sheet — tap-through from a listing row */
 .detail-photo { height:220px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:52px; overflow:hidden; margin:-22px -20px 16px }
 .detail-photo img { width:100%; height:100%; object-fit:cover; display:block }
+.detail-gallery { position:relative; margin:-22px -20px 16px }
+.detail-gallery-track { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; scrollbar-width:none }
+.detail-gallery-track::-webkit-scrollbar { display:none }
+.detail-gallery-slide { flex:0 0 100%; scroll-snap-align:center; height:220px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:52px; overflow:hidden }
+.detail-gallery-slide img { width:100%; height:100%; object-fit:cover; display:block }
+.detail-gallery-dots { position:absolute; bottom:8px; left:0; right:0; display:flex; justify-content:center; gap:5px }
+.detail-gallery-dots span { width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.4) }
+.detail-gallery-dots span.on { background:var(--am) }
+.insight-block { margin-top:14px }
+.insight-label { font-weight:600; font-size:12.5px; letter-spacing:.04em; color:var(--tx2); text-transform:uppercase }
+.review-quote { font-size:13.5px; color:var(--tx2); font-style:italic; border-left:2px solid var(--bd2); padding:4px 0 4px 12px; margin-top:8px }
+.review-quote .ra { display:block; margin-top:3px; font-style:normal; font-size:12px; color:var(--tx2); opacity:.7 }
+.insight-loading { font-size:13px; color:var(--tx2); margin-top:14px }
 .detail-name { font-family:'Fraunces'; font-weight:600; font-size:22px }
 .detail-desc { font-size:14px; color:var(--tx2); margin-top:3px }
 .detail-meta { display:flex; gap:12px; font-size:13.5px; color:var(--tx2); flex-wrap:wrap; margin-top:10px }
@@ -292,10 +305,10 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
         <div class="setup-row">
           <div class="setup-label">Budget</div>
           <div class="pill-select" id="budgetPills">
-            <span class="chip" data-v="any" onclick="selectPill(this)">Any</span>
-            <span class="chip" data-v="$" onclick="selectPill(this)">$</span>
-            <span class="chip active" data-v="$$" onclick="selectPill(this)">$$</span>
-            <span class="chip" data-v="$$$" onclick="selectPill(this)">$$$</span>
+            <span class="chip" data-v="any" onclick="selectBudget(this)">Any</span>
+            <span class="chip" data-v="$" onclick="selectBudget(this)">$</span>
+            <span class="chip active" data-v="$$" onclick="selectBudget(this)">$$</span>
+            <span class="chip" data-v="$$$" onclick="selectBudget(this)">$$$</span>
           </div>
         </div>
         <div class="setup-row">
@@ -414,12 +427,16 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 <div class="ov" id="detailModal" onclick="if(event.target===this) closeDetail()">
   <div class="modal">
     <div class="mh"></div>
-    <div class="detail-photo" id="detailPhoto">🍽️</div>
+    <div class="detail-gallery">
+      <div class="detail-gallery-track" id="detailGalleryTrack"></div>
+      <div class="detail-gallery-dots" id="detailGalleryDots"></div>
+    </div>
     <div class="detail-name disp" id="detailName">—</div>
     <div class="detail-desc" id="detailDesc"></div>
     <div class="tag-row" id="detailTags" style="margin-top:8px"></div>
     <div class="detail-meta" id="detailMeta"></div>
     <div class="detail-why" id="detailWhy"></div>
+    <div id="detailInsights"></div>
     <a class="detail-maps-link" id="detailMapsLink" href="#" target="_blank" rel="noopener">View on Google Maps ↗</a>
     <button class="btn btn-ghost" style="width:100%;margin-top:16px" onclick="closeDetail()">Close</button>
   </div>
@@ -527,6 +544,29 @@ function closeMenu(){ document.getElementById('avatarMenu').classList.remove('op
 function selectPill(el){ el.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); el.classList.add('active'); }
 
 // ---- Taste preferences (drives curation on the backend) ----
+function selectBudget(el){
+  const group = el.parentElement;
+  if (el.dataset.v === 'any'){
+    group.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+    el.classList.add('active');
+    return;
+  }
+  group.querySelector('[data-v="any"]')?.classList.remove('active');
+  el.classList.toggle('active');
+  if (![...group.querySelectorAll('.chip')].some(c=>c.classList.contains('active'))){
+    group.querySelector('[data-v="any"]')?.classList.add('active');
+  }
+}
+function budgetValue(){
+  const active = [...document.querySelectorAll('#budgetPills .chip.active')].map(c=>c.dataset.v);
+  if (!active.length || active.includes('any')) return 'any';
+  return active;
+}
+function budgetLabel(){
+  const b = budgetValue();
+  return b === 'any' ? 'Any budget' : b.join('/');
+}
+
 function selectDietary(el){
   const group = el.parentElement;
   if (el.dataset.v === 'none'){
@@ -639,15 +679,59 @@ function escapeHtml(s){
 
 // Detail sheet — full context for why a place made the shortlist, plus a Maps link
 let detailItems = [];
+let detailOpenToken = 0; // guards against a slow fetch resolving after the sheet was closed/reopened
+
+function renderGallery(refs, fallbackEmoji, fallbackName){
+  const track = document.getElementById('detailGalleryTrack');
+  const dots = document.getElementById('detailGalleryDots');
+  if (!refs || !refs.length){
+    track.innerHTML = `<div class="detail-gallery-slide">${fallbackEmoji || '🍽️'}</div>`;
+    dots.innerHTML = '';
+    return;
+  }
+  track.innerHTML = refs.map((ref, i) => {
+    const url = `${API_BASE}/api/photo?ref=${encodeURIComponent(ref)}&w=700`;
+    return `<div class="detail-gallery-slide"><img src="${url}" alt="${escapeHtml(fallbackName||'')} photo ${i+1}" loading="${i===0?'eager':'lazy'}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${fallbackEmoji||'🍽️'}'}))"></div>`;
+  }).join('');
+  dots.innerHTML = refs.map((_, i) => `<span class="${i===0?'on':''}"></span>`).join('');
+  if (refs.length > 1){
+    track.onscroll = () => {
+      const idx = Math.round(track.scrollLeft / track.clientWidth);
+      [...dots.children].forEach((d, i) => d.classList.toggle('on', i === idx));
+    };
+  } else {
+    track.onscroll = null;
+  }
+}
+
+function renderInsights(detail){
+  const el = document.getElementById('detailInsights');
+  if (!detail){
+    el.innerHTML = '<div class="insight-loading">Loading more photos and reviews…</div>';
+    return;
+  }
+  const parts = [];
+  if (detail.editorialSummary){
+    parts.push(`<div class="insight-block"><div class="insight-label">About</div><div class="detail-desc" style="margin-top:6px">${escapeHtml(detail.editorialSummary)}</div></div>`);
+  }
+  if (detail.reviews && detail.reviews.length){
+    const quotes = detail.reviews.slice(0, 3).map(r => `<div class="review-quote">"${escapeHtml(r.text)}"<span class="ra">${escapeHtml(r.author)}${r.rating ? ' · ' + r.rating + '★' : ''}${r.when ? ' · ' + escapeHtml(r.when) : ''}</span></div>`).join('');
+    parts.push(`<div class="insight-block"><div class="insight-label">What people say</div>${quotes}</div>`);
+  }
+  el.innerHTML = parts.join('');
+}
+
 function openDetail(idx){
   const item = detailItems[idx];
   if (!item) return;
-  document.getElementById('detailPhoto').innerHTML = photoOrEmojiHTML(item, 600);
+  const token = ++detailOpenToken;
+  renderGallery(item.photoRef ? [item.photoRef] : [], item.emoji, item.name);
   document.getElementById('detailName').textContent = item.name;
   document.getElementById('detailDesc').textContent = item.description || item.meta || '';
   document.getElementById('detailTags').innerHTML = (item.tags||[]).map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join('');
   document.getElementById('detailMeta').innerHTML = (item.meta||'').split(' · ').map(m=>`<span>${m}</span>`).join('');
   document.getElementById('detailWhy').textContent = item.why || '';
+  renderInsights(null);
   const mapsLink = document.getElementById('detailMapsLink');
   if (item.placeId){
     // Documented Maps URL format: query is a text fallback, query_place_id pins the exact place.
@@ -657,9 +741,23 @@ function openDetail(idx){
     mapsLink.style.display = 'none';
   }
   document.getElementById('detailModal').classList.add('open');
+
+  if (item.placeId && API_BASE && !API_BASE.includes('YOUR-WORKER-SUBDOMAIN')){
+    fetch(`${API_BASE}/api/place-detail?id=${encodeURIComponent(item.placeId)}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(detail => {
+        if (token !== detailOpenToken || !detail) return; // sheet moved on — discard
+        if (detail.photoRefs && detail.photoRefs.length) renderGallery(detail.photoRefs, item.emoji, item.name);
+        renderInsights(detail);
+      })
+      .catch(() => { if (token === detailOpenToken) renderInsights({}); });
+  } else {
+    renderInsights({});
+  }
 }
 function closeDetail(){
   document.getElementById('detailModal').classList.remove('open');
+  detailOpenToken++;
 }
 
 const DEFAULT_LOCATION = { lat: 1.2839, lng: 103.8517 }; // Raffles Place, SG — used if location is denied/unavailable
@@ -752,7 +850,7 @@ function populateAreaSelect(){
 }
 
 function getSetupValues(){
-  const budget = document.querySelector('#budgetPills .chip.active')?.dataset.v || 'any';
+  const budget = budgetValue();
   const radiusKm = Number(document.querySelector('#distPills .chip.active')?.dataset.v || 2);
   const transitOnly = document.getElementById('mrtSwitch')?.classList.contains('on') || false;
   const areaName = document.getElementById('areaSelect')?.value || null;
@@ -813,7 +911,7 @@ async function startShuffle(){
   document.getElementById('skipHint').style.display='';
   document.getElementById('poolCount').innerHTML = '<b>0</b> candidates found';
   const whereLabel = whereMode === 'area' && areaName ? `in ${areaName}` : `within ${radiusKm}km`;
-  document.getElementById('searchSub').textContent = `${partySize} ${partySize>1?'people':'person'} · ${budget==='any'?'Any budget':budget} · ${whereLabel}${transitOnly?' · near MRT':''}`;
+  document.getElementById('searchSub').textContent = `${partySize} ${partySize>1?'people':'person'} · ${budgetLabel()} · ${whereLabel}${transitOnly?' · near MRT':''}`;
 
   // kick off the real call immediately, in parallel with the reasoning animation
   const livePromise = resolveAnchor(areaName)

@@ -35,6 +35,10 @@ export default {
       return handlePhoto(url, env);
     }
 
+    if (url.pathname === "/api/place-detail" && request.method === "GET") {
+      return handlePlaceDetail(url, env);
+    }
+
     if (url.pathname !== "/api/search" || request.method !== "POST") {
       return json({ error: "Not found. POST /api/search" }, 404);
     }
@@ -49,7 +53,9 @@ export default {
     const lat = Number(body.lat);
     const lng = Number(body.lng);
     const radiusKm = Number(body.radiusKm) || 2;
-    const budget = body.budget || "any";
+    // budget accepts "any", a single symbol "$"/"$$"/"$$$", or an array like ["$","$$"]
+    // for a multi-select ("show me cheap and mid-range together").
+    const budget = Array.isArray(body.budget) ? body.budget : (body.budget || "any");
     const partySize = Number(body.partySize) || 2;
     // Taste preferences from the onboarding quiz — all optional, all best-effort.
     // { style: "traditional"|"modern"|"either", novelty: "repeat"|"explore"|"mix",
@@ -71,7 +77,8 @@ export default {
     const prefsKey = prefs
       ? `:${prefs.style || "-"}:${prefs.ambience || "-"}:${prefs.novelty || "-"}:${(prefs.dietary || []).slice().sort().join(",")}`
       : "";
-    const cacheKey = `search:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budget}${prefsKey}${transitOnly ? ":mrt" : ""}`;
+    const budgetKey = Array.isArray(budget) ? budget.slice().sort().join(",") : budget;
+    const cacheKey = `search:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budgetKey}${prefsKey}${transitOnly ? ":mrt" : ""}`;
 
     // Skip the cache entirely once novelty/recency personalization is in play —
     // the ranking depends on this specific user's recent history, so a shared
@@ -139,10 +146,88 @@ async function handlePhoto(url, env) {
   });
 }
 
+// Lazy, on-demand detail fetch — only called when the user actually taps into
+// a listing, so we don't pay for these richer (pricier) fields on all ~8
+// candidates every search, only the 1-3 someone actually opens.
+const PLACE_DETAIL_CACHE_TTL = 60 * 60 * 24 * 3; // 3 days — reviews/photos don't change fast
+
+async function handlePlaceDetail(url, env) {
+  const id = url.searchParams.get("id");
+  if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) {
+    return new Response("Invalid id", { status: 400, headers: CORS_HEADERS });
+  }
+  if (!env.GOOGLE_PLACES_API_KEY) {
+    return json({ error: "GOOGLE_PLACES_API_KEY not set" }, 500);
+  }
+
+  const cacheKey = `detail:${id}`;
+  if (env.SEARCH_CACHE) {
+    const cached = await env.SEARCH_CACHE.get(cacheKey, "json");
+    if (cached) return json({ ...cached, cached: true });
+  }
+
+  const res = await fetch(`https://places.googleapis.com/v1/places/${id}`, {
+    headers: {
+      "X-Goog-Api-Key": env.GOOGLE_PLACES_API_KEY,
+      "X-Goog-FieldMask": [
+        "photos",
+        "editorialSummary",
+        "reviews.text",
+        "reviews.rating",
+        "reviews.authorAttribution.displayName",
+        "reviews.relativePublishTimeDescription",
+        "formattedAddress",
+      ].join(","),
+    },
+  });
+  if (!res.ok) return json({ error: `Place details error ${res.status}` }, res.status);
+  const data = await res.json();
+
+  const result = {
+    photoRefs: (data.photos || []).slice(0, 6).map((p) => p.name),
+    editorialSummary: data.editorialSummary?.text || null,
+    reviews: (data.reviews || []).slice(0, 5).map((r) => ({
+      text: r.text?.text || "",
+      rating: r.rating || null,
+      author: r.authorAttribution?.displayName || "Google user",
+      when: r.relativePublishTimeDescription || "",
+    })).filter((r) => r.text),
+    formattedAddress: data.formattedAddress || null,
+  };
+
+  if (env.SEARCH_CACHE) {
+    await env.SEARCH_CACHE.put(cacheKey, JSON.stringify(result), { expirationTtl: PLACE_DETAIL_CACHE_TTL });
+  }
+
+  return json(result);
+}
+
 async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, env }) {
   if (!env.GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
-  const venues = await fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey: env.GOOGLE_PLACES_API_KEY });
+  let venues = await fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey: env.GOOGLE_PLACES_API_KEY });
+  if (!venues.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
+
+  // MICHELIN tagging — curated list, no API call, no cost, no hallucination.
+  // Reads a KV override first (so the list can be refreshed without redeploying),
+  // falling back to the embedded 2025 seed. Built early so the hawker-centre
+  // filter below can safety-check against it.
+  let michelinData = null;
+  if (env.SEARCH_CACHE) {
+    try {
+      michelinData = await env.SEARCH_CACHE.get("michelin:list", "json");
+    } catch { /* fall through to embedded seed */ }
+  }
+  const michelin = buildMichelinIndex(michelinData);
+
+  // "Tiong Bahru Market" or "Chinatown Complex Food Centre" as a whole is too
+  // broad a suggestion — you can't order "a hawker centre". Drop the umbrella
+  // venue itself, but only when it's NOT itself a specific curated stall name
+  // (safety net for any edge-case naming collision), so the individual stalls
+  // Places already lists separately (which do match the Bib Gourmand/Selected
+  // list via lookupMichelin below) still come through untouched.
+  const GENERIC_HAWKER = /\b(food centre|food center|market|food court|hawker centre|hawker center|hawker complex|kopitiam)\s*$/i;
+  venues = venues.filter((v) => !GENERIC_HAWKER.test(v.name) || lookupMichelin(v.name, michelin));
   if (!venues.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
   let candidates = venues;
@@ -164,17 +249,6 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   }
 
   const shortlist = candidates.slice(0, 20);
-
-  // MICHELIN tagging — curated list, no API call, no cost, no hallucination.
-  // Reads a KV override first (so the list can be refreshed without redeploying),
-  // falling back to the embedded 2025 seed.
-  let michelinData = null;
-  if (env.SEARCH_CACHE) {
-    try {
-      michelinData = await env.SEARCH_CACHE.get("michelin:list", "json");
-    } catch { /* fall through to embedded seed */ }
-  }
-  const michelin = buildMichelinIndex(michelinData);
 
   // Optional: grounded "trending" tags via Gemini. Disabled by default because
   // Search grounding requires a paid/prepay Gemini project. Set ENABLE_GROUNDING="true"
@@ -244,7 +318,11 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
   return places
     // Places tags big hotels/malls as "restaurant" — they crowd out actual eateries
     .filter((p) => !EXCLUDED_TYPES.test((p.types || []).join(" ")))
-    .filter((p) => budget === "any" || !p.priceLevel || p.priceLevel === PRICE_MAP[budget])
+    .filter((p) => {
+      if (budget === "any" || !p.priceLevel) return true;
+      const wanted = Array.isArray(budget) ? budget : [budget];
+      return wanted.some((b) => p.priceLevel === PRICE_MAP[b]);
+    })
     .map((p) => ({
       id: p.id,
       name: p.displayName?.text || "Unnamed",
