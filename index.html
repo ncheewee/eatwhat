@@ -299,12 +299,27 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
           </div>
         </div>
         <div class="setup-row">
+          <div class="setup-label">Where</div>
+          <div class="pill-select" id="wherePills">
+            <span class="chip active" data-v="near" onclick="selectPill(this);setWhereMode('near')">Near me</span>
+            <span class="chip" data-v="area" onclick="selectPill(this);setWhereMode('area')">Pick an area</span>
+          </div>
+        </div>
+        <div class="setup-row" id="distanceRow">
           <div class="setup-label">Distance</div>
           <div class="pill-select" id="distPills">
             <span class="chip" data-v="0.5" onclick="selectPill(this)">500m</span>
             <span class="chip active" data-v="2" onclick="selectPill(this)">2km</span>
             <span class="chip" data-v="5" onclick="selectPill(this)">5km</span>
           </div>
+        </div>
+        <div class="setup-row" id="areaRow" style="display:none">
+          <div class="setup-label">Area</div>
+          <select id="areaSelect" style="background:var(--sf);color:var(--tx);border:1px solid var(--bd2);border-radius:4px;padding:6px 10px;font-size:14px;font-family:inherit"></select>
+        </div>
+        <div class="setup-row">
+          <div class="setup-label">Near MRT only</div>
+          <div class="switch" id="mrtSwitch" onclick="toggleSwitch(this)"><div class="knob"></div></div>
         </div>
       </div>
 
@@ -496,6 +511,7 @@ function signOut(){
 window.addEventListener('load', () => {
   setTimeout(initGoogleAuth, 300);
   setTimeout(() => { if (!document.getElementById('loginGate').classList.contains('hidden')) document.getElementById('loginSkip').style.display = ''; }, 4000);
+  populateAreaSelect();
 });
 
 let tT;
@@ -648,6 +664,52 @@ function closeDetail(){
 
 const DEFAULT_LOCATION = { lat: 1.2839, lng: 103.8517 }; // Raffles Place, SG — used if location is denied/unavailable
 
+// Curated set of well-known URA planning areas / neighbourhoods with approximate
+// centroids — used as a search anchor when the user picks an area instead of
+// relying on geolocation. Not exhaustive (Singapore has ~55 official planning
+// areas incl. industrial/park ones with little dining) — this covers the ones
+// people actually search food in.
+const SG_AREAS = [
+  { name: 'Orchard', lat: 1.3048, lng: 103.8318 },
+  { name: 'Downtown Core / Raffles Place', lat: 1.2839, lng: 103.8517 },
+  { name: 'Marina Bay', lat: 1.2807, lng: 103.8600 },
+  { name: 'Tanjong Pagar', lat: 1.2762, lng: 103.8455 },
+  { name: 'Outram / Chinatown', lat: 1.2825, lng: 103.8443 },
+  { name: 'Tiong Bahru', lat: 1.2860, lng: 103.8270 },
+  { name: 'Bugis / Rochor', lat: 1.2996, lng: 103.8558 },
+  { name: 'Kampong Glam', lat: 1.3021, lng: 103.8598 },
+  { name: 'Little India', lat: 1.3067, lng: 103.8517 },
+  { name: 'Novena', lat: 1.3204, lng: 103.8437 },
+  { name: 'Newton', lat: 1.3128, lng: 103.8382 },
+  { name: 'Bukit Timah', lat: 1.3294, lng: 103.8021 },
+  { name: 'Holland Village', lat: 1.3113, lng: 103.7963 },
+  { name: 'Queenstown', lat: 1.2942, lng: 103.8060 },
+  { name: 'Tiong Bahru / Bukit Merah', lat: 1.2820, lng: 103.8180 },
+  { name: 'Clementi', lat: 1.3151, lng: 103.7654 },
+  { name: 'Jurong East', lat: 1.3329, lng: 103.7436 },
+  { name: 'Jurong West', lat: 1.3404, lng: 103.7090 },
+  { name: 'Bukit Batok', lat: 1.3590, lng: 103.7637 },
+  { name: 'Bukit Panjang', lat: 1.3774, lng: 103.7719 },
+  { name: 'Choa Chu Kang', lat: 1.3840, lng: 103.7470 },
+  { name: 'Woodlands', lat: 1.4360, lng: 103.7860 },
+  { name: 'Sembawang', lat: 1.4491, lng: 103.8185 },
+  { name: 'Yishun', lat: 1.4295, lng: 103.8353 },
+  { name: 'Ang Mo Kio', lat: 1.3691, lng: 103.8454 },
+  { name: 'Bishan', lat: 1.3506, lng: 103.8486 },
+  { name: 'Toa Payoh', lat: 1.3343, lng: 103.8563 },
+  { name: 'Serangoon', lat: 1.3554, lng: 103.8679 },
+  { name: 'Hougang', lat: 1.3712, lng: 103.8925 },
+  { name: 'Punggol', lat: 1.4043, lng: 103.9020 },
+  { name: 'Sengkang', lat: 1.3868, lng: 103.8914 },
+  { name: 'Pasir Ris', lat: 1.3721, lng: 103.9494 },
+  { name: 'Tampines', lat: 1.3496, lng: 103.9450 },
+  { name: 'Bedok', lat: 1.3236, lng: 103.9273 },
+  { name: 'Changi', lat: 1.3400, lng: 103.9800 },
+  { name: 'Geylang / Paya Lebar', lat: 1.3180, lng: 103.8930 },
+  { name: 'Katong / East Coast', lat: 1.3010, lng: 103.9060 },
+  { name: 'Kallang', lat: 1.3115, lng: 103.8650 },
+];
+
 // Fallback data if the API isn't configured yet, or a call fails — keeps the mockup usable standalone
 const MOCK_POOL = [
   {name:'Nama Ramen Bar', emoji:'🍜', source:'trend', win:true,  tags:['Trending','@makanmakan'], meta:'4.6 · 0.4km · $$ · Till 10pm', why:'Trending this week · 0.4km away'},
@@ -677,10 +739,24 @@ function tagClass(t){
   return 'tag-reviewed';
 }
 
+let whereMode = 'near';
+function setWhereMode(mode){
+  whereMode = mode;
+  document.getElementById('distanceRow').style.display = mode === 'near' ? '' : 'none';
+  document.getElementById('areaRow').style.display = mode === 'area' ? '' : 'none';
+}
+function populateAreaSelect(){
+  const sel = document.getElementById('areaSelect');
+  if (!sel || sel.options.length) return;
+  sel.innerHTML = SG_AREAS.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
+}
+
 function getSetupValues(){
   const budget = document.querySelector('#budgetPills .chip.active')?.dataset.v || 'any';
   const radiusKm = Number(document.querySelector('#distPills .chip.active')?.dataset.v || 2);
-  return { people, budget, radiusKm };
+  const transitOnly = document.getElementById('mrtSwitch')?.classList.contains('on') || false;
+  const areaName = document.getElementById('areaSelect')?.value || null;
+  return { people, budget, radiusKm, transitOnly, areaName };
 }
 
 function getLocation(){
@@ -696,23 +772,35 @@ function getLocation(){
   });
 }
 
-async function fetchLivePool({ lat, lng, radiusKm, budget, partySize }){
+// Resolves to a { lat, lng } search anchor — either the device's real location
+// ("Near me") or a picked area's centroid ("Pick an area"), skipping geolocation
+// entirely in the latter case so it works even when you're nowhere near there yet.
+function resolveAnchor(areaName){
+  if (whereMode === 'area' && areaName){
+    const area = SG_AREAS.find(a => a.name === areaName);
+    if (area) return Promise.resolve({ lat: area.lat, lng: area.lng });
+  }
+  return getLocation();
+}
+
+async function fetchLivePool({ lat, lng, radiusKm, budget, partySize, transitOnly }){
   if (!API_BASE || API_BASE.includes('YOUR-WORKER-SUBDOMAIN')) throw new Error('API_BASE not configured');
   const res = await fetch(API_BASE + '/api/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lat, lng, radiusKm, budget, partySize, prefs: getPrefs(), recentPlaceIds: recentPlaceIds() })
+    body: JSON.stringify({ lat, lng, radiusKm, budget, partySize, transitOnly, prefs: getPrefs(), recentPlaceIds: recentPlaceIds() })
   });
   if (!res.ok) throw new Error('API error ' + res.status);
   const data = await res.json();
   if (!data.pool || !data.pool.length) throw new Error('Empty result');
+  if (data.transitFallback) toast('No spots found right by MRT — showing nearby options instead');
   return data.pool;
 }
 
 async function startShuffle(){
   clearSearchTimers();
   searchDone = false;
-  const { people: partySize, budget, radiusKm } = getSetupValues();
+  const { people: partySize, budget, radiusKm, transitOnly, areaName } = getSetupValues();
 
   const log = document.getElementById('reasonLog');
   const pool = document.getElementById('pool');
@@ -724,11 +812,12 @@ async function startShuffle(){
   document.getElementById('searchTitle').textContent = 'Curating your shortlist';
   document.getElementById('skipHint').style.display='';
   document.getElementById('poolCount').innerHTML = '<b>0</b> candidates found';
-  document.getElementById('searchSub').textContent = `${partySize} ${partySize>1?'people':'person'} · ${budget==='any'?'Any budget':budget} · within ${radiusKm}km`;
+  const whereLabel = whereMode === 'area' && areaName ? `in ${areaName}` : `within ${radiusKm}km`;
+  document.getElementById('searchSub').textContent = `${partySize} ${partySize>1?'people':'person'} · ${budget==='any'?'Any budget':budget} · ${whereLabel}${transitOnly?' · near MRT':''}`;
 
   // kick off the real call immediately, in parallel with the reasoning animation
-  const livePromise = getLocation()
-    .then(loc => fetchLivePool({ ...loc, radiusKm, budget, partySize }))
+  const livePromise = resolveAnchor(areaName)
+    .then(loc => fetchLivePool({ ...loc, radiusKm, budget, partySize, transitOnly }))
     .catch(() => null);
 
   let count = 0;

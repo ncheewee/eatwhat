@@ -58,6 +58,11 @@ export default {
     // Recently accepted placeIds (most recent first), sent by the client from its
     // own history so "explore vs repeat" can bias ranking without a server-side DB.
     const recentPlaceIds = Array.isArray(body.recentPlaceIds) ? body.recentPlaceIds.slice(0, 15) : [];
+    // "Convenient for public transport" — hard filter to spots within ~5 min walk
+    // (~400m) of an MRT/LRT station, using Google's own live transit-station data
+    // rather than a hand-maintained station list (which would go stale as new
+    // lines/stations open).
+    const transitOnly = body.transitOnly === true;
 
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       return json({ error: "lat/lng required" }, 400);
@@ -66,7 +71,7 @@ export default {
     const prefsKey = prefs
       ? `:${prefs.style || "-"}:${prefs.ambience || "-"}:${prefs.novelty || "-"}:${(prefs.dietary || []).slice().sort().join(",")}`
       : "";
-    const cacheKey = `search:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budget}${prefsKey}`;
+    const cacheKey = `search:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budget}${prefsKey}${transitOnly ? ":mrt" : ""}`;
 
     // Skip the cache entirely once novelty/recency personalization is in play —
     // the ranking depends on this specific user's recent history, so a shared
@@ -82,7 +87,7 @@ export default {
 
     let result;
     try {
-      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, env });
+      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, env });
     } catch (err) {
       result = { pool: MOCK_POOL, mock: true, error: String(err) };
     }
@@ -134,13 +139,31 @@ async function handlePhoto(url, env) {
   });
 }
 
-async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, env }) {
+async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, env }) {
   if (!env.GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
   const venues = await fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey: env.GOOGLE_PLACES_API_KEY });
   if (!venues.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
-  const shortlist = venues.slice(0, 20);
+  let candidates = venues;
+  let transitFallback = false;
+  let stations = [];
+  if (transitOnly) {
+    try {
+      stations = await fetchTransitStations({ lat, lng, radiusKm, apiKey: env.GOOGLE_PLACES_API_KEY });
+      if (stations.length) {
+        const nearStation = venues.filter((v) => nearestStationKm(v, stations) <= 0.45);
+        if (nearStation.length) candidates = nearStation;
+        else transitFallback = true; // none matched — don't dead-end the search
+      } else {
+        transitFallback = true;
+      }
+    } catch {
+      transitFallback = true; // station lookup failed — fall back to unfiltered rather than error out
+    }
+  }
+
+  const shortlist = candidates.slice(0, 20);
 
   // MICHELIN tagging — curated list, no API call, no cost, no hallucination.
   // Reads a KV override first (so the list can be refreshed without redeploying),
@@ -166,12 +189,12 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   }
 
   const merged = shortlist.map((v) =>
-    mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), prefs, recentPlaceIds)
+    mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), prefs, recentPlaceIds, stations)
   );
   const ranked = rankVenues(merged);
   const pool = ranked.slice(0, 8).map((v, i) => ({ ...v, win: i < 3 }));
 
-  return { pool, guideYear: michelin.year };
+  return { pool, guideYear: michelin.year, transitOnly, transitFallback };
 }
 
 // ---------- Google Places API (New) ----------
@@ -231,12 +254,47 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
       priceSymbol: symbolForPriceLevel(p.priceLevel),
       openNow: p.currentOpeningHours?.openNow ?? null,
       distanceKm: haversineKm(lat, lng, p.location?.latitude, p.location?.longitude),
+      lat: p.location?.latitude ?? null,
+      lng: p.location?.longitude ?? null,
       primaryType: p.primaryType || "restaurant",
       typeLabel: p.primaryTypeDisplayName?.text || null,
       types: p.types || [],
       emoji: emojiForType(p.primaryType, p.types),
       photoRef: p.photos?.[0]?.name || null, // e.g. "places/ChIJ.../photos/AWU5..."
     }));
+}
+
+async function fetchTransitStations({ lat, lng, radiusKm, apiKey }) {
+  const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "places.location",
+    },
+    body: JSON.stringify({
+      includedTypes: ["subway_station", "train_station", "light_rail_station"],
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: { center: { latitude: lat, longitude: lng }, radius: Math.min((radiusKm + 1) * 1000, 50000) },
+      },
+    }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.places || [])
+    .map((p) => p.location)
+    .filter((l) => l && Number.isFinite(l.latitude) && Number.isFinite(l.longitude));
+}
+
+function nearestStationKm(v, stations) {
+  if (!stations.length || v.lat == null || v.lng == null) return Infinity;
+  let min = Infinity;
+  for (const s of stations) {
+    const d = haversineKm(v.lat, v.lng, s.latitude, s.longitude);
+    if (d < min) min = d;
+  }
+  return min;
 }
 
 function symbolForPriceLevel(level) {
@@ -309,9 +367,10 @@ no prose, no markdown fences, in this exact shape:
 
 // ---------- Merge + rank ----------
 
-function mergeVenue(v, hype, mich, prefs, recentPlaceIds) {
+function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations) {
   const tags = [];
   let source = "reviews";
+  if (stations && stations.length && nearestStationKm(v, stations) <= 0.45) tags.push("Near MRT");
 
   // Curated MICHELIN tier takes priority — it's verified data, not inferred
   if (mich) {
