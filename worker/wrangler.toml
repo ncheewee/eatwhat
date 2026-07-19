@@ -1,0 +1,15 @@
+name = "eatwhat-api"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# After creating the KV namespace with:
+#   npx wrangler kv namespace create SEARCH_CACHE
+# paste the returned "id" below.
+[[kv_namespaces]]
+binding = "SEARCH_CACHE"
+id = "5c6c06693a404f949d3b3d81ce731004"
+
+# Secrets (never put these in this file — set them with:
+#   npx wrangler secret put GOOGLE_PLACES_API_KEY
+#   npx wrangler secret put GEMINI_API_KEY
+# )
