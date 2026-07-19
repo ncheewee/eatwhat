@@ -381,18 +381,24 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 // Authorized JavaScript origins: https://ncheewee.github.io
 const GOOGLE_CLIENT_ID = '279502449091-o52oibu40h31odr2rso4igl6up6j224r.apps.googleusercontent.com';
 
-function initGoogleAuth(){
-  const cached = getStoredUser();
-  if (cached) { showApp(cached); return; }
+let gisReady = false;
 
-  if (window.google && google.accounts && google.accounts.id && !GOOGLE_CLIENT_ID.startsWith('YOUR_')){
-    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse, auto_select: true });
-    google.accounts.id.renderButton(document.getElementById('gsiButton'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signin_with', width: 260 });
-    google.accounts.id.prompt(); // One Tap, if eligible
-  } else {
-    // GIS script missing/blocked, or client ID not configured yet — don't hard-lock the app
+// Always initialize + render the button exactly once per page load, regardless
+// of whether we already have a cached session — otherwise if the user later
+// signs out (or the cache is cleared), there's no working button left to use.
+function initGoogleAuth(){
+  if (gisReady) return; // idempotent — never re-initialize within the same page load
+  if (!(window.google && google.accounts && google.accounts.id) || GOOGLE_CLIENT_ID.startsWith('YOUR_')){
     document.getElementById('loginSkip').style.display = '';
+    return;
   }
+  gisReady = true;
+  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse, auto_select: true });
+  google.accounts.id.renderButton(document.getElementById('gsiButton'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signin_with', width: 260 });
+
+  const cached = getStoredUser();
+  if (cached) showApp(cached);
+  else google.accounts.id.prompt(); // One Tap, best-effort
 }
 
 function handleCredentialResponse(response){
@@ -428,14 +434,16 @@ function signOut(){
   localStorage.removeItem('eatwhat_user');
   document.getElementById('avatarEl').innerHTML = 'CW';
   document.getElementById('loginGate').classList.remove('hidden');
-  document.getElementById('loginSkip').style.display = 'none';
-  if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
-  initGoogleAuth();
+  document.getElementById('loginSkip').style.display = ''; // button + skip link both already exist and work
+  if (window.google && google.accounts && google.accounts.id){
+    google.accounts.id.disableAutoSelect();
+    google.accounts.id.prompt(); // offer One Tap again — button itself doesn't need re-rendering
+  }
 }
 
 // If the GIS script is slow/blocked, still let the user in after a short wait
 window.addEventListener('load', () => {
-  if (!getStoredUser()) setTimeout(initGoogleAuth, 300);
+  setTimeout(initGoogleAuth, 300);
   setTimeout(() => { if (!document.getElementById('loginGate').classList.contains('hidden')) document.getElementById('loginSkip').style.display = ''; }, 4000);
 });
 
