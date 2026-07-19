@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
 <title>EatWhat — Editorial</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap');
 
@@ -36,6 +37,14 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .disp { font-family:'Fraunces',Georgia,serif }
 .sans { font-family:'Inter',sans-serif }  /* reserved for tiny uppercase labels */
 #app { display:flex; flex-direction:column; height:100dvh; max-width:430px; margin:0 auto; background:var(--bg); position:relative; box-shadow:0 0 40px rgba(0,0,0,.3) }
+
+/* Login gate */
+#loginGate { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; z-index:1000; max-width:430px; margin:0 auto; padding:32px }
+#loginGate.hidden { display:none }
+.login-logo { font-family:'Fraunces',serif; font-weight:600; font-size:38px; color:var(--tx) }
+.login-tag { font-size:14px; color:var(--tx2); text-align:center; margin-top:-14px }
+#gsiButton { min-height:44px }
+.login-skip { font-size:12.5px; color:var(--tx3); text-decoration:underline; cursor:pointer; margin-top:6px }
 #hdr { padding:16px 18px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; gap:8px; border-bottom:1px solid var(--bd) }
 .hdr-left { display:flex; align-items:center; gap:10px }
 #backBtn { display:none; background:none; border:1px solid var(--bd); width:30px; height:30px; border-radius:50%; align-items:center; justify-content:center; cursor:pointer; font-size:16px; color:var(--tx) }
@@ -190,6 +199,13 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 </head>
 <body>
 
+<div id="loginGate">
+  <div class="login-logo">EatWhat</div>
+  <div class="login-tag">Decide what to eat in 30 seconds.<br>Sign in to save your taste over time.</div>
+  <div id="gsiButton"></div>
+  <div class="login-skip" id="loginSkip" style="display:none" onclick="skipLogin()">Continue without signing in</div>
+</div>
+
 <div id="app">
   <div id="hdr">
     <div class="hdr-left">
@@ -197,12 +213,12 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
       <div class="logo" id="hdrTitle">EatWhat</div>
     </div>
     <div class="avatar-wrap">
-      <div class="avatar" onclick="toggleMenu()">CW</div>
+      <div class="avatar" onclick="toggleMenu()" id="avatarEl">CW</div>
       <div class="menu" id="avatarMenu">
         <button class="menu-item" onclick="go('history');closeMenu()">History</button>
         <button class="menu-item" onclick="go('settings');closeMenu()">Settings</button>
         <button class="menu-item" onclick="toggleTheme();closeMenu()">Light mode</button>
-        <button class="menu-item" onclick="toast('Signed out');closeMenu()">Sign out</button>
+        <button class="menu-item" onclick="signOut();closeMenu()">Sign out</button>
       </div>
     </div>
   </div>
@@ -359,6 +375,70 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 </div>
 
 <script>
+// ---- Google Sign-In gate ----
+// Create this in Google Cloud Console (same project as your Places/Gemini keys):
+// APIs & Services -> Credentials -> Create Credentials -> OAuth client ID -> Web application
+// Authorized JavaScript origins: https://ncheewee.github.io
+const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com';
+
+function initGoogleAuth(){
+  const cached = getStoredUser();
+  if (cached) { showApp(cached); return; }
+
+  if (window.google && google.accounts && google.accounts.id && !GOOGLE_CLIENT_ID.startsWith('YOUR_')){
+    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse, auto_select: true });
+    google.accounts.id.renderButton(document.getElementById('gsiButton'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signin_with', width: 260 });
+    google.accounts.id.prompt(); // One Tap, if eligible
+  } else {
+    // GIS script missing/blocked, or client ID not configured yet — don't hard-lock the app
+    document.getElementById('loginSkip').style.display = '';
+  }
+}
+
+function handleCredentialResponse(response){
+  try {
+    const payload = JSON.parse(atob(response.credential.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    const user = { name: payload.name, email: payload.email, picture: payload.picture, sub: payload.sub };
+    localStorage.setItem('eatwhat_user', JSON.stringify(user));
+    showApp(user);
+  } catch (e) {
+    document.getElementById('loginSkip').style.display = '';
+  }
+}
+
+function getStoredUser(){
+  try { return JSON.parse(localStorage.getItem('eatwhat_user') || 'null'); } catch { return null; }
+}
+
+function showApp(user){
+  document.getElementById('loginGate').classList.add('hidden');
+  const av = document.getElementById('avatarEl');
+  if (user && user.picture){
+    av.innerHTML = `<img src="${user.picture}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`;
+  } else if (user && user.name){
+    av.textContent = user.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  }
+}
+
+function skipLogin(){
+  showApp(null);
+}
+
+function signOut(){
+  localStorage.removeItem('eatwhat_user');
+  document.getElementById('avatarEl').innerHTML = 'CW';
+  document.getElementById('loginGate').classList.remove('hidden');
+  document.getElementById('loginSkip').style.display = 'none';
+  if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
+  initGoogleAuth();
+}
+
+// If the GIS script is slow/blocked, still let the user in after a short wait
+window.addEventListener('load', () => {
+  if (!getStoredUser()) setTimeout(initGoogleAuth, 300);
+  setTimeout(() => { if (!document.getElementById('loginGate').classList.contains('hidden')) document.getElementById('loginSkip').style.display = ''; }, 4000);
+});
+
 let tT;
 function toast(msg, type='') {
   const t = document.getElementById('toast');
