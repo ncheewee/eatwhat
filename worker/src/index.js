@@ -51,14 +51,29 @@ export default {
     const radiusKm = Number(body.radiusKm) || 2;
     const budget = body.budget || "any";
     const partySize = Number(body.partySize) || 2;
+    // Taste preferences from the onboarding quiz — all optional, all best-effort.
+    // { style: "traditional"|"modern"|"either", novelty: "repeat"|"explore"|"mix",
+    //   ambience: "minimal"|"somewhat"|"important", dietary: string[] }
+    const prefs = body.prefs && typeof body.prefs === "object" ? body.prefs : null;
+    // Recently accepted placeIds (most recent first), sent by the client from its
+    // own history so "explore vs repeat" can bias ranking without a server-side DB.
+    const recentPlaceIds = Array.isArray(body.recentPlaceIds) ? body.recentPlaceIds.slice(0, 15) : [];
 
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       return json({ error: "lat/lng required" }, 400);
     }
 
-    const cacheKey = `search:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budget}`;
+    const prefsKey = prefs
+      ? `:${prefs.style || "-"}:${prefs.ambience || "-"}:${prefs.novelty || "-"}:${(prefs.dietary || []).slice().sort().join(",")}`
+      : "";
+    const cacheKey = `search:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budget}${prefsKey}`;
 
-    if (env.SEARCH_CACHE) {
+    // Skip the cache entirely once novelty/recency personalization is in play —
+    // the ranking depends on this specific user's recent history, so a shared
+    // cache entry would leak one person's ranking to another.
+    const canCache = env.SEARCH_CACHE && recentPlaceIds.length === 0;
+
+    if (canCache) {
       const cached = await env.SEARCH_CACHE.get(cacheKey, "json");
       if (cached) {
         return json({ ...cached, cached: true });
@@ -67,12 +82,12 @@ export default {
 
     let result;
     try {
-      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, env });
+      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, env });
     } catch (err) {
       result = { pool: MOCK_POOL, mock: true, error: String(err) };
     }
 
-    if (env.SEARCH_CACHE && !result.mock) {
+    if (canCache && !result.mock) {
       ctx.waitUntil(
         env.SEARCH_CACHE.put(cacheKey, JSON.stringify(result), {
           expirationTtl: CACHE_TTL_SECONDS,
@@ -119,7 +134,7 @@ async function handlePhoto(url, env) {
   });
 }
 
-async function runPipeline({ lat, lng, radiusKm, budget, partySize, env }) {
+async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, env }) {
   if (!env.GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
   const venues = await fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey: env.GOOGLE_PLACES_API_KEY });
@@ -151,7 +166,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, env }) {
   }
 
   const merged = shortlist.map((v) =>
-    mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin))
+    mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), prefs, recentPlaceIds)
   );
   const ranked = rankVenues(merged);
   const pool = ranked.slice(0, 8).map((v, i) => ({ ...v, win: i < 3 }));
@@ -218,6 +233,7 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
       distanceKm: haversineKm(lat, lng, p.location?.latitude, p.location?.longitude),
       primaryType: p.primaryType || "restaurant",
       typeLabel: p.primaryTypeDisplayName?.text || null,
+      types: p.types || [],
       emoji: emojiForType(p.primaryType, p.types),
       photoRef: p.photos?.[0]?.name || null, // e.g. "places/ChIJ.../photos/AWU5..."
     }));
@@ -293,7 +309,7 @@ no prose, no markdown fences, in this exact shape:
 
 // ---------- Merge + rank ----------
 
-function mergeVenue(v, hype, mich) {
+function mergeVenue(v, hype, mich, prefs, recentPlaceIds) {
   const tags = [];
   let source = "reviews";
 
@@ -310,6 +326,9 @@ function mergeVenue(v, hype, mich) {
   const metaParts = [v.rating ? v.rating.toFixed(1) : "—", v.distanceKm != null ? `${v.distanceKm}km` : "—", v.priceSymbol];
   if (v.openNow != null) metaParts.push(v.openNow ? "Open now" : "Closed now");
 
+  const isRecent = recentPlaceIds && v.id && recentPlaceIds.includes(v.id);
+  if (prefs?.novelty === "repeat" && isRecent) tags.push("A favorite of yours");
+
   return {
     placeId: v.id || null,
     name: v.name,
@@ -320,8 +339,73 @@ function mergeVenue(v, hype, mich) {
     tags,
     meta: metaParts.join(" · "),
     why: michWhy(mich, v) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
-    _score: scoreVenue(v, hype, mich),
+    _score: scoreVenue(v, hype, mich, prefs, isRecent),
   };
+}
+
+// ---------- Taste-preference scoring helpers ----------
+// All heuristic and additive — never hard-filter, since Places data is too
+// noisy to safely exclude venues outright (a false exclusion is worse than a
+// mild mis-ranking).
+
+const TRADITIONAL_HINTS = /hawker|kopitiam|food court|coffee house|zi char|teochew|hainanese|heritage/i;
+const MODERN_HINTS = /fine dining|contemporary|omakase|degustation|tasting menu|wine bar|cocktail/i;
+const HALAL_HINTS = /halal|muslim/i;
+const PORK_HINTS = /pork|bak kut teh|char siu|bak kwa|lard/i;
+const BEEF_HINTS = /beef|steak|wagyu/i;
+const VEGETARIAN_TYPES = /vegetarian|vegan/i;
+
+function stylePrefBonus(v, style) {
+  if (!style || style === "either") return 0;
+  const text = `${v.name} ${v.typeLabel || ""} ${(v.types || []).join(" ")}`;
+  if (style === "traditional") {
+    if (TRADITIONAL_HINTS.test(text)) return 3;
+    if (v.priceSymbol === "$") return 1;
+    if (MODERN_HINTS.test(text) || v.priceSymbol === "$$$") return -2;
+  }
+  if (style === "modern") {
+    if (MODERN_HINTS.test(text)) return 3;
+    if (v.priceSymbol === "$$$") return 2;
+    if (TRADITIONAL_HINTS.test(text)) return -1;
+  }
+  return 0;
+}
+
+function ambienceBonus(v, ambience) {
+  if (!ambience || ambience === "somewhat") return 0;
+  if (ambience === "important") {
+    if (v.priceSymbol === "$$$") return 2;
+    if (v.priceSymbol === "$$") return 1;
+    return -1;
+  }
+  if (ambience === "minimal") {
+    if (v.priceSymbol === "$") return 1;
+  }
+  return 0;
+}
+
+function dietaryBonus(v, dietary) {
+  if (!dietary || !dietary.length) return 0;
+  const text = `${v.name} ${v.typeLabel || ""}`;
+  const types = (v.types || []).join(" ");
+  let score = 0;
+  if (dietary.includes("vegetarian") || dietary.includes("vegan")) {
+    if (VEGETARIAN_TYPES.test(types) || VEGETARIAN_TYPES.test(text)) score += 4;
+  }
+  if (dietary.includes("halal")) {
+    if (HALAL_HINTS.test(text)) score += 4;
+    if (PORK_HINTS.test(text)) score -= 3;
+  }
+  if (dietary.includes("no_pork") && PORK_HINTS.test(text)) score -= 3;
+  if (dietary.includes("no_beef") && BEEF_HINTS.test(text)) score -= 3;
+  return score;
+}
+
+function noveltyBonus(novelty, isRecent) {
+  if (!novelty || novelty === "mix" || !isRecent) return 0;
+  if (novelty === "repeat") return 4; // resurface known favorites
+  if (novelty === "explore") return -6; // push already-visited spots down
+  return 0;
 }
 
 // Short "glance" line, styled like a Google listing snippet:
@@ -359,13 +443,19 @@ function michWhy(mich, v) {
   return (map[mich.tier] || "In the MICHELIN Guide") + near;
 }
 
-function scoreVenue(v, hype, mich) {
+function scoreVenue(v, hype, mich, prefs, isRecent) {
   let score = (v.rating || 0) * Math.log10((v.reviewCount || 1) + 1);
   if (mich) score += mich.weight; // 10/9/8 stars, 6 bib, 3 selected
   if (hype?.trending) score += 4;
   if (hype?.reviewedBy) score += 2;
   if (v.distanceKm != null) score -= v.distanceKm * 0.8;
   if (v.openNow === false) score -= 3;
+  if (prefs) {
+    score += stylePrefBonus(v, prefs.style);
+    score += ambienceBonus(v, prefs.ambience);
+    score += dietaryBonus(v, prefs.dietary);
+    score += noveltyBonus(prefs.novelty, isRecent);
+  }
   return score;
 }
 

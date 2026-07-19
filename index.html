@@ -216,6 +216,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
       <div class="avatar" onclick="toggleMenu()" id="avatarEl">CW</div>
       <div class="menu" id="avatarMenu">
         <button class="menu-item" onclick="go('history');closeMenu()">History</button>
+        <button class="menu-item" onclick="openTasteEdit();closeMenu()">Taste preferences</button>
         <button class="menu-item" onclick="go('settings');closeMenu()">Settings</button>
         <button class="menu-item" onclick="toggleTheme();closeMenu()">Light mode</button>
         <button class="menu-item" onclick="signOut();closeMenu()">Sign out</button>
@@ -224,6 +225,53 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
   </div>
 
   <div id="screens">
+
+    <!-- TASTE ONBOARDING -->
+    <div class="screen" id="screen-taste">
+      <div class="meal-banner">
+        <div class="m">A few quick questions</div>
+        <div class="t disp">What's your taste?</div>
+      </div>
+      <div class="card">
+        <div class="setup-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+          <div class="setup-label">Traditional fare, or modern cooking?</div>
+          <div class="pill-select" id="tasteStyle">
+            <span class="chip" data-v="traditional" onclick="selectPill(this)">Traditional</span>
+            <span class="chip active" data-v="either" onclick="selectPill(this)">Either</span>
+            <span class="chip" data-v="modern" onclick="selectPill(this)">Modern</span>
+          </div>
+        </div>
+        <div class="setup-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+          <div class="setup-label">Found somewhere good — go back, or try somewhere new?</div>
+          <div class="pill-select" id="tasteNovelty">
+            <span class="chip" data-v="repeat" onclick="selectPill(this)">Go back</span>
+            <span class="chip active" data-v="mix" onclick="selectPill(this)">Mix</span>
+            <span class="chip" data-v="explore" onclick="selectPill(this)">Always new</span>
+          </div>
+        </div>
+        <div class="setup-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+          <div class="setup-label">How much does ambience matter?</div>
+          <div class="pill-select" id="tasteAmbience">
+            <span class="chip" data-v="minimal" onclick="selectPill(this)">Just feed me</span>
+            <span class="chip active" data-v="somewhat" onclick="selectPill(this)">Somewhat</span>
+            <span class="chip" data-v="important" onclick="selectPill(this)">Important</span>
+          </div>
+        </div>
+        <div class="setup-row" style="flex-direction:column;align-items:flex-start;gap:10px;border-bottom:none">
+          <div class="setup-label">Any dietary needs?</div>
+          <div class="pill-select" id="tasteDietary">
+            <span class="chip active" data-v="none" onclick="selectDietary(this)">None</span>
+            <span class="chip" data-v="vegetarian" onclick="selectDietary(this)">Vegetarian</span>
+            <span class="chip" data-v="vegan" onclick="selectDietary(this)">Vegan</span>
+            <span class="chip" data-v="halal" onclick="selectDietary(this)">Halal</span>
+            <span class="chip" data-v="no_pork" onclick="selectDietary(this)">No pork</span>
+            <span class="chip" data-v="no_beef" onclick="selectDietary(this)">No beef</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="margin-top:auto" onclick="saveTasteAndContinue()">Save</button>
+      <div class="muted" style="text-align:center;margin-top:10px"><a href="#" onclick="event.preventDefault();skipTaste()" style="color:var(--tx2)">Skip for now</a></div>
+    </div>
 
     <!-- SETUP -->
     <div class="screen active" id="screen-setup">
@@ -336,11 +384,11 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
     <div class="screen" id="screen-settings">
       <div style="font-weight:600;font-size:15px;letter-spacing:.03em;padding-top:16px">SETTINGS</div>
       <div class="card">
-        <div class="set-row"><div>Diet</div><div class="muted">None set</div></div>
+        <div class="set-row" style="cursor:pointer" onclick="openTasteEdit()"><div>Taste preferences</div><div class="muted" id="settingsTasteSummary">Not set ›</div></div>
         <div class="set-row"><div>Check-in ping</div><div class="switch on" id="checkinSwitch" onclick="toggleSwitch(this)"><div class="knob"></div></div></div>
         <div class="set-row"><div>Light mode</div><div class="switch" id="darkSwitch" onclick="toggleSwitch(this,true)"><div class="knob"></div></div></div>
       </div>
-      <button class="btn btn-ghost" style="width:100%" onclick="toast('Mockup — disabled')">Sign out</button>
+      <button class="btn btn-ghost" style="width:100%" onclick="signOut();">Sign out</button>
     </div>
 
   </div>
@@ -424,6 +472,9 @@ function showApp(user){
   } else if (user && user.name){
     av.textContent = user.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
   }
+  // First-time sign-in (or "continue without signing in") gets a quick taste quiz
+  // so curation can be tailored from the very first search.
+  if (!hasPrefs()) go('taste'); else go('setup');
 }
 
 function skipLogin(){
@@ -458,10 +509,70 @@ function toast(msg, type='') {
 function toggleMenu(){ document.getElementById('avatarMenu').classList.toggle('open'); }
 function closeMenu(){ document.getElementById('avatarMenu').classList.remove('open'); }
 function selectPill(el){ el.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); el.classList.add('active'); }
+
+// ---- Taste preferences (drives curation on the backend) ----
+function selectDietary(el){
+  const group = el.parentElement;
+  if (el.dataset.v === 'none'){
+    group.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+    el.classList.add('active');
+    return;
+  }
+  group.querySelector('[data-v="none"]')?.classList.remove('active');
+  el.classList.toggle('active');
+  if (![...group.querySelectorAll('.chip')].some(c=>c.classList.contains('active'))){
+    group.querySelector('[data-v="none"]')?.classList.add('active');
+  }
+}
+function getPrefs(){
+  try { return JSON.parse(localStorage.getItem('eatwhat_prefs') || 'null'); } catch { return null; }
+}
+function hasPrefs(){ return !!getPrefs(); }
+function pillGroupValue(id){ return document.querySelector(`#${id} .chip.active`)?.dataset.v || null; }
+function dietaryValues(){
+  const vals = [...document.querySelectorAll('#tasteDietary .chip.active')].map(c=>c.dataset.v).filter(v=>v!=='none');
+  return vals;
+}
+function applyPrefsToTasteScreen(prefs){
+  const p = prefs || {};
+  [['tasteStyle', p.style || 'either'], ['tasteNovelty', p.novelty || 'mix'], ['tasteAmbience', p.ambience || 'somewhat']].forEach(([id, v])=>{
+    document.querySelectorAll(`#${id} .chip`).forEach(c => c.classList.toggle('active', c.dataset.v === v));
+  });
+  const dietary = (p.dietary && p.dietary.length) ? p.dietary : ['none'];
+  document.querySelectorAll('#tasteDietary .chip').forEach(c => c.classList.toggle('active', dietary.includes(c.dataset.v)));
+}
+function saveTasteAndContinue(){
+  const prefs = {
+    style: pillGroupValue('tasteStyle') || 'either',
+    novelty: pillGroupValue('tasteNovelty') || 'mix',
+    ambience: pillGroupValue('tasteAmbience') || 'somewhat',
+    dietary: dietaryValues(),
+  };
+  localStorage.setItem('eatwhat_prefs', JSON.stringify(prefs));
+  toast('Taste preferences saved', 'ok');
+  go('setup');
+}
+function skipTaste(){ go('setup'); }
+function openTasteEdit(){
+  applyPrefsToTasteScreen(getPrefs());
+  go('taste');
+}
+
+// ---- Pick history — feeds "recent" back to the backend for repeat/explore ranking ----
+function getHistory(){
+  try { return JSON.parse(localStorage.getItem('eatwhat_history') || '[]'); } catch { return []; }
+}
+function pushHistory(item){
+  if (!item || !item.placeId) return;
+  const hist = getHistory().filter(h => h.placeId !== item.placeId);
+  hist.unshift({ placeId: item.placeId, name: item.name, ts: Date.now() });
+  localStorage.setItem('eatwhat_history', JSON.stringify(hist.slice(0, 15)));
+}
+function recentPlaceIds(){ return getHistory().map(h => h.placeId); }
 let people = 2;
 function stepPeople(d){ people = Math.max(1, Math.min(12, people+d)); document.getElementById('peopleVal').textContent = people; }
 
-const TITLES = {setup:'EatWhat', shuffle:'Finding spots', pick:'Today’s pick', group:'Together', history:'History', settings:'Settings'};
+const TITLES = {taste:'Your taste', setup:'EatWhat', shuffle:'Finding spots', pick:'Today’s pick', group:'Together', history:'History', settings:'Settings'};
 function go(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + id)?.classList.add('active');
@@ -471,6 +582,19 @@ function go(id) {
   if (id === 'shuffle') setTimeout(startShuffle, 30);
   if (id === 'pick') setTimeout(renderPick, 30);
   if (id === 'group') setTimeout(initSwipe, 30);
+  if (id === 'settings') renderSettingsTasteSummary();
+  if (id === 'taste' && hasPrefs()) applyPrefsToTasteScreen(getPrefs());
+}
+
+function renderSettingsTasteSummary(){
+  const p = getPrefs();
+  const el = document.getElementById('settingsTasteSummary');
+  if (!el) return;
+  if (!p){ el.textContent = 'Not set ›'; return; }
+  const bits = [];
+  if (p.style && p.style !== 'either') bits.push(p.style);
+  if (p.dietary && p.dietary.length) bits.push(p.dietary.join(', '));
+  el.textContent = (bits.length ? bits.join(' · ') : 'Set') + ' ›';
 }
 
 // ---- Live backend config ----
@@ -510,7 +634,8 @@ function openDetail(idx){
   document.getElementById('detailWhy').textContent = item.why || '';
   const mapsLink = document.getElementById('detailMapsLink');
   if (item.placeId){
-    mapsLink.href = `https://www.google.com/maps/place/?q=place_id:${item.placeId}`;
+    // Documented Maps URL format: query is a text fallback, query_place_id pins the exact place.
+    mapsLink.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name || 'restaurant')}&query_place_id=${encodeURIComponent(item.placeId)}`;
     mapsLink.style.display = '';
   } else {
     mapsLink.style.display = 'none';
@@ -576,7 +701,7 @@ async function fetchLivePool({ lat, lng, radiusKm, budget, partySize }){
   const res = await fetch(API_BASE + '/api/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lat, lng, radiusKm, budget, partySize })
+    body: JSON.stringify({ lat, lng, radiusKm, budget, partySize, prefs: getPrefs(), recentPlaceIds: recentPlaceIds() })
   });
   if (!res.ok) throw new Error('API error ' + res.status);
   const data = await res.json();
@@ -765,6 +890,7 @@ function paintPick(){
 function rerollPick(){ pickIdx++; rerolls++; paintPick(); }
 function acceptPick(){
   const c = FINALISTS[pickIdx % FINALISTS.length];
+  pushHistory(c);
   toast('Accepted', 'ok');
   document.getElementById('feedbackName').textContent = `How was ${c.name}?`;
   setTimeout(()=>{ document.getElementById('feedbackModal').classList.add('open'); }, 900);
@@ -800,11 +926,13 @@ function renderSwipeCard(){
     }
     const liked = FINALISTS.map(d=>d.name).filter(name => PARTICIPANTS.every(p => swipeResults[p].includes(name)));
     const winner = liked[0] || FINALISTS[Math.floor(Math.random()*FINALISTS.length)].name;
+    const winnerItem = FINALISTS.find(d => d.name === winner);
     stage.innerHTML = `<div class="pick-card" style="width:100%"><div class="pick-photo">✓</div><div class="pick-body" style="align-items:center;text-align:center">
       <div style="font-weight:500;font-size:13.5px;color:var(--tx2);letter-spacing:.03em">EVERYONE AGREED</div>
       <div class="pick-name">${winner}</div>
-      <button class="btn btn-primary" onclick="go('setup');toast('Accepted','ok')">Let's go</button>
+      <button class="btn btn-primary" onclick="pushHistory(window.__swipeWinner);go('setup');toast('Accepted','ok')">Let's go</button>
     </div></div>`;
+    window.__swipeWinner = winnerItem;
     document.getElementById('swipeProgress').textContent = 'Done';
     document.querySelector('.swipe-actions').style.display = 'none';
     return;
