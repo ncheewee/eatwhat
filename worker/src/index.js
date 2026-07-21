@@ -228,68 +228,47 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   // list via lookupMichelin below) still come through untouched.
   const GENERIC_HAWKER = /\b(food centre|food center|market|food court|hawker centre|hawker center|hawker complex|kopitiam|complex)\s*$/i;
 
-  // If the user asked for `count` picks, they should get `count` picks —
-  // Singapore has plenty of restaurants at any budget, so a narrow miss
-  // (small radius + strict budget + near-MRT-only) shouldn't leave someone
-  // with a shortlist of one. Budget and "near MRT only" are the user's actual
-  // preferences and stay fixed; radius is more of a convenience default, so
-  // that's the dial we widen — quietly retrying at a bigger radius (Google
-  // Places nearby search is capped at 20 raw results either way, so a wider
-  // circle surfaces a different — and hopefully larger — matching set) until
-  // there are enough candidates to fill the shortlist, capped at ~25km which
-  // covers the whole island.
-  const radiusLadder = Array.from(
-    new Set([radiusKm, radiusKm * 2, radiusKm * 3, 8, 15, 25].map((r) => Math.min(Math.max(r, radiusKm), 25)))
-  ).sort((a, b) => a - b);
+  // Budget and "near MRT only" used to be hard filters at the fetch stage —
+  // which is exactly what could leave someone with a shortlist of one when
+  // both were strict and the radius was small. The search area stays fixed
+  // (the user picked it on purpose); instead of throwing candidates away for
+  // not matching, they're scored as preferences: an exact budget match or a
+  // spot right by a station ranks higher, but a venue that's merely close
+  // (not exact) still competes for a slot. If the user asked for `count`
+  // picks, they get `count` — the "greatness bar" flexes before the list
+  // comes up short, not the geography.
+  let venues = await fetchNearbyPlaces({ lat, lng, radiusKm, apiKey: env.GOOGLE_PLACES_API_KEY });
+  venues = venues.filter((v) => !GENERIC_HAWKER.test(v.name) || lookupMichelin(v.name, michelin));
 
-  let ranked = [];
-  let transitFallback = false;
-  let usedRadiusKm = radiusKm;
+  if (!venues.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
-  for (const tryRadius of radiusLadder) {
-    let venues = await fetchNearbyPlaces({ lat, lng, radiusKm: tryRadius, budget, apiKey: env.GOOGLE_PLACES_API_KEY });
-    venues = venues.filter((v) => !GENERIC_HAWKER.test(v.name) || lookupMichelin(v.name, michelin));
-    usedRadiusKm = tryRadius;
-    if (!venues.length) continue;
-
-    let candidates = venues;
-    let stations = [];
-    if (transitOnly) {
-      try {
-        stations = await fetchTransitStations({ lat, lng, radiusKm: tryRadius, apiKey: env.GOOGLE_PLACES_API_KEY });
-        if (stations.length) {
-          const nearStation = venues.filter((v) => nearestStationKm(v, stations) <= 0.45);
-          if (nearStation.length) candidates = nearStation;
-          else transitFallback = true; // none matched — don't dead-end the search
-        } else {
-          transitFallback = true;
-        }
-      } catch {
-        transitFallback = true; // station lookup failed — fall back to unfiltered rather than error out
-      }
+  let stations = [];
+  if (transitOnly) {
+    try {
+      stations = await fetchTransitStations({ lat, lng, radiusKm, apiKey: env.GOOGLE_PLACES_API_KEY });
+    } catch {
+      stations = []; // station lookup failed — scoring bonus just won't apply, nothing hard-fails
     }
-
-    const shortlist = candidates.slice(0, 20);
-
-    // Optional: grounded "trending" tags via Gemini. Disabled by default because
-    // Search grounding requires a paid/prepay Gemini project. Set ENABLE_GROUNDING="true"
-    // once billing is in place to switch it on.
-    let hypeTags = {};
-    if (env.ENABLE_GROUNDING === "true" && env.GEMINI_API_KEY) {
-      try {
-        hypeTags = await fetchHypeTags({ venues: shortlist.slice(0, 15), apiKey: env.GEMINI_API_KEY });
-      } catch {
-        hypeTags = {}; // best-effort — never fail the request over this
-      }
-    }
-
-    const merged = shortlist.map((v) =>
-      mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), prefs, recentPlaceIds, stations)
-    );
-    ranked = rankVenues(merged);
-
-    if (ranked.length >= count || tryRadius >= 25) break;
   }
+
+  const shortlist = venues.slice(0, 20);
+
+  // Optional: grounded "trending" tags via Gemini. Disabled by default because
+  // Search grounding requires a paid/prepay Gemini project. Set ENABLE_GROUNDING="true"
+  // once billing is in place to switch it on.
+  let hypeTags = {};
+  if (env.ENABLE_GROUNDING === "true" && env.GEMINI_API_KEY) {
+    try {
+      hypeTags = await fetchHypeTags({ venues: shortlist.slice(0, 15), apiKey: env.GEMINI_API_KEY });
+    } catch {
+      hypeTags = {}; // best-effort — never fail the request over this
+    }
+  }
+
+  const merged = shortlist.map((v) =>
+    mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), prefs, recentPlaceIds, stations, budget, transitOnly)
+  );
+  const ranked = rankVenues(merged);
 
   if (!ranked.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
@@ -311,10 +290,15 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
     }
   }
 
+  const winners = topN.slice(0, count);
   const pool = topN.map(({ _score, _category, ...v }, i) => ({ ...v, win: i < count }));
-  const widenedSearch = usedRadiusKm > radiusKm;
 
-  return { pool, guideYear: michelin.year, transitOnly, transitFallback, widenedSearch, searchRadiusKm: usedRadiusKm };
+  // "Near MRT only" is now a soft preference rather than a hard filter, so
+  // there's no all-or-nothing fallback to react to — just tell the user
+  // plainly if none of the actual winners ended up tagged as near a station.
+  const transitFallback = transitOnly && stations.length > 0 && !winners.some((v) => v.tags.includes("Near MRT"));
+
+  return { pool, guideYear: michelin.year, transitOnly, transitFallback };
 }
 
 // ---------- Google Places API (New) ----------
@@ -325,7 +309,7 @@ const PRICE_MAP = {
   "$$$": "PRICE_LEVEL_EXPENSIVE",
 };
 
-async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
+async function fetchNearbyPlaces({ lat, lng, radiusKm, apiKey }) {
   const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
     method: "POST",
     headers: {
@@ -382,17 +366,9 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
     // Places tags big hotels/malls as "restaurant" — they crowd out actual eateries
     .filter((p) => !EXCLUDED_TYPES.test((p.types || []).join(" ")))
     .filter((p) => !SATURATED_CHAIN_BLOCKLIST.test(p.displayName?.text || ""))
-    .filter((p) => {
-      // Deliberately NOT bypassing this filter when priceLevel is missing —
-      // that used to silently let unpriced venues through ANY budget filter
-      // (including "$$$" fine-dining searches), which is wrong: if Google
-      // hasn't classified a venue's price at all, we can't confirm it
-      // matches what was asked for, so we shouldn't claim it does.
-      if (budget === "any") return true;
-      if (!p.priceLevel) return false;
-      const wanted = Array.isArray(budget) ? budget : [budget];
-      return wanted.some((b) => p.priceLevel === PRICE_MAP[b]);
-    })
+    // Budget is no longer a hard filter here — see runPipeline. It's applied
+    // as a scoring preference instead, so a narrow budget never empties out
+    // the whole candidate pool before the shortlist gets a chance to fill.
     .map((p) => ({
       id: p.id,
       name: p.displayName?.text || "Unnamed",
@@ -553,10 +529,11 @@ function classifyVenue(v, mich) {
   return "restaurant";
 }
 
-function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations) {
+function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations, budget, transitOnly) {
   const tags = [];
   let source = "reviews";
-  if (stations && stations.length && nearestStationKm(v, stations) <= 0.45) tags.push("Near MRT");
+  const nearStation = !!(stations && stations.length && nearestStationKm(v, stations) <= 0.45);
+  if (nearStation) tags.push("Near MRT");
 
   const category = classifyVenue(v, mich);
 
@@ -591,7 +568,7 @@ function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations) {
     tags,
     meta: metaParts.join(" · "),
     why: michWhy(mich, v) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
-    _score: scoreVenue(v, hype, mich, prefs, isRecent, category),
+    _score: scoreVenue(v, hype, mich, prefs, isRecent, category, budget, transitOnly, nearStation),
     _category: category,
   };
 }
@@ -696,7 +673,7 @@ function michWhy(mich, v) {
   return (map[mich.tier] || "In the MICHELIN Guide") + near;
 }
 
-function scoreVenue(v, hype, mich, prefs, isRecent, category) {
+function scoreVenue(v, hype, mich, prefs, isRecent, category, budget, transitOnly, nearStation) {
   // Cap the review-count signal — past a few thousand reviews it's telling
   // you a place is a high-traffic fixture, not that it's better than a place
   // with 800 reviews and a devoted following. Uncapped, this term let sheer
@@ -723,6 +700,20 @@ function scoreVenue(v, hype, mich, prefs, isRecent, category) {
   if (hype?.reviewedBy) score += 2;
   if (v.distanceKm != null) score -= v.distanceKm * 0.8;
   if (v.openNow === false) score -= 3;
+
+  // Budget and "near MRT only" are preferences, not hard cutoffs (see
+  // runPipeline) — matches get a strong push up the ranking, confirmed
+  // mismatches a mild push down, and unknown/unpriced venues stay neutral
+  // rather than being penalised for data Google never gave us. This is what
+  // lets a narrow budget or a near-station requirement still fill out a full
+  // shortlist from the same search area instead of running out of matches.
+  if (budget && budget !== "any") {
+    const wanted = Array.isArray(budget) ? budget : [budget];
+    if (v.priceLevel && v.priceLevel !== "PRICE_LEVEL_UNSPECIFIED") {
+      score += wanted.some((b) => v.priceLevel === PRICE_MAP[b]) ? 6 : -4;
+    }
+  }
+  if (transitOnly) score += nearStation ? 6 : -3;
   if (prefs) {
     score += stylePrefBonus(v, prefs.style);
     score += ambienceBonus(v, prefs.ambience);

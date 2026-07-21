@@ -1026,7 +1026,6 @@ async function fetchLivePool({ lat, lng, radiusKm, budget, transitOnly, count })
   const data = await res.json();
   if (!data.pool || !data.pool.length) throw new Error('Empty result');
   if (data.transitFallback) toast('No spots found right by MRT — showing nearby options instead');
-  if (data.widenedSearch) toast(`Widened search to ${data.searchRadiusKm}km to find enough spots`);
   return data.pool;
 }
 
