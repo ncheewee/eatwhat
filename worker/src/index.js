@@ -359,7 +359,13 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
     .filter((p) => !EXCLUDED_TYPES.test((p.types || []).join(" ")))
     .filter((p) => !SATURATED_CHAIN_BLOCKLIST.test(p.displayName?.text || ""))
     .filter((p) => {
-      if (budget === "any" || !p.priceLevel) return true;
+      // Deliberately NOT bypassing this filter when priceLevel is missing —
+      // that used to silently let unpriced venues through ANY budget filter
+      // (including "$$$" fine-dining searches), which is wrong: if Google
+      // hasn't classified a venue's price at all, we can't confirm it
+      // matches what was asked for, so we shouldn't claim it does.
+      if (budget === "any") return true;
+      if (!p.priceLevel) return false;
       const wanted = Array.isArray(budget) ? budget : [budget];
       return wanted.some((b) => p.priceLevel === PRICE_MAP[b]);
     })
@@ -417,7 +423,10 @@ function nearestStationKm(v, stations) {
 }
 
 function symbolForPriceLevel(level) {
-  return { PRICE_LEVEL_INEXPENSIVE: "$", PRICE_LEVEL_MODERATE: "$$", PRICE_LEVEL_EXPENSIVE: "$$$", PRICE_LEVEL_VERY_EXPENSIVE: "$$$$" }[level] || "$$";
+  // No silent "$$" default — an unpriced venue should read as unknown, not
+  // be mislabeled as moderately priced (which was actively misleading under
+  // a "$$$" search that let it through).
+  return { PRICE_LEVEL_INEXPENSIVE: "$", PRICE_LEVEL_MODERATE: "$$", PRICE_LEVEL_EXPENSIVE: "$$$", PRICE_LEVEL_VERY_EXPENSIVE: "$$$$" }[level] || null;
 }
 
 function emojiForType(primaryType = "", types = []) {
@@ -541,7 +550,8 @@ function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations) {
   if (hype?.reviewedBy) tags.push(`@${hype.reviewedBy}`);
   if (!tags.length) tags.push(v.openNow ? "Open now" : "Nearby");
 
-  const metaParts = [v.rating ? v.rating.toFixed(1) : "—", v.distanceKm != null ? `${v.distanceKm}km` : "—", v.priceSymbol];
+  const metaParts = [v.rating ? v.rating.toFixed(1) : "—", v.distanceKm != null ? `${v.distanceKm}km` : "—"];
+  if (v.priceSymbol) metaParts.push(v.priceSymbol);
   if (v.openNow != null) metaParts.push(v.openNow ? "Open now" : "Closed now");
 
   const isRecent = recentPlaceIds && v.id && recentPlaceIds.includes(v.id);
@@ -632,7 +642,7 @@ function noveltyBonus(novelty, isRecent) {
 function buildDescription(v) {
   const parts = [];
   parts.push(v.typeLabel || titleCase(v.primaryType) || "Restaurant");
-  parts.push(v.priceSymbol);
+  if (v.priceSymbol) parts.push(v.priceSymbol);
   if (v.rating) parts.push(`${v.rating.toFixed(1)}★ (${formatCount(v.reviewCount)})`);
   if (v.distanceKm != null) parts.push(`${v.distanceKm}km`);
   return parts.join(" · ");

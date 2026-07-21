@@ -90,7 +90,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 /* SEARCH / CURATION */
 .search-title { font-family:'Fraunces'; font-size:21px; font-weight:600; padding-top:18px }
 .search-sub { font-size:12px; color:var(--tx3); letter-spacing:.1em; text-transform:uppercase; margin-top:2px }
-.reason-log { display:flex; flex-direction:column; gap:7px; min-height:118px }
+.reason-log { display:flex; flex-direction:column; gap:7px; min-height:118px; flex-shrink:0 }
 .reason-line { display:flex; gap:9px; align-items:center; font-size:14.5px; color:var(--tx2); opacity:0; transform:translateX(-6px); transition:all .3s ease }
 .reason-line.in { opacity:1; transform:none }
 .reason-line.done { color:var(--tx3) }
@@ -100,7 +100,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .rspin { width:11px; height:11px; border:1.5px solid var(--bd2); border-top-color:var(--am); border-radius:50%; animation:spin .7s linear infinite }
 @keyframes spin { to { transform:rotate(360deg) } }
 
-.pool-wrap { border-top:1px solid var(--bd); padding-top:14px; display:flex; flex-direction:column; gap:10px }
+.pool-wrap { border-top:1px solid var(--bd); padding-top:14px; display:flex; flex-direction:column; gap:10px; flex-shrink:0 }
 .pool-count { font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--tx3); text-align:center }
 .pool-count b { color:var(--am); font-family:'Fraunces'; font-size:15px }
 .pool { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; min-height:96px; align-content:flex-start }

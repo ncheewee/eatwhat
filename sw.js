@@ -1,7 +1,7 @@
 // EatWhat service worker — caches the app shell so the UI (and last-seen
 // screen) still loads offline. It never caches /api/search — that call
 // should always hit the network for fresh restaurant data.
-const CACHE = 'eatwhat-shell-v12';
+const CACHE = 'eatwhat-shell-v13';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
