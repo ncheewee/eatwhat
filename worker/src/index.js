@@ -15,6 +15,7 @@
  */
 
 import { buildMichelinIndex, lookupMichelin } from "./michelin.js";
+import { matchesKnownHawkerCentre } from "./hawker-centres.js";
 
 const CACHE_TTL_SECONDS = 60 * 60 * 12; // 12h — Michelin/trending data doesn't move fast
 const CORS_HEADERS = {
@@ -226,7 +227,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   // (safety net for any edge-case naming collision), so the individual stalls
   // Places already lists separately (which do match the Bib Gourmand/Selected
   // list via lookupMichelin below) still come through untouched.
-  const GENERIC_HAWKER = /\b(food centre|food center|market|food court|hawker centre|hawker center|hawker complex|kopitiam)\s*$/i;
+  const GENERIC_HAWKER = /\b(food centre|food center|market|food court|hawker centre|hawker center|hawker complex|kopitiam|complex)\s*$/i;
   venues = venues.filter((v) => !GENERIC_HAWKER.test(v.name) || lookupMichelin(v.name, michelin));
   if (!venues.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
@@ -314,6 +315,7 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
         "places.primaryTypeDisplayName",
         "places.types",
         "places.photos",
+        "places.formattedAddress",
       ].join(","),
     },
     body: JSON.stringify({
@@ -368,6 +370,7 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
       distanceKm: haversineKm(lat, lng, p.location?.latitude, p.location?.longitude),
       lat: p.location?.latitude ?? null,
       lng: p.location?.longitude ?? null,
+      formattedAddress: p.formattedAddress || "",
       primaryType: p.primaryType || "restaurant",
       typeLabel: p.primaryTypeDisplayName?.text || null,
       types: p.types || [],
@@ -501,9 +504,14 @@ const HAWKER_HINTS = /\bhawker\b|\beating house\b|\bcoffee ?shop\b|\bfood centre
 
 function classifyVenue(v, mich) {
   const text = `${v.name} ${v.typeLabel || ""} ${v.primaryType || ""}`;
-  if (FOODCOURT_HINTS.test(text)) return "foodcourt";
+  // The address is a better signal than the stall's own name — a stall is
+  // rarely named "X Hawker Centre" itself, but its formattedAddress almost
+  // always names the building it's in ("2 Adam Rd, Adam Road Food Centre").
+  const address = v.formattedAddress || "";
+  if (FOODCOURT_HINTS.test(text) || FOODCOURT_HINTS.test(address)) return "foodcourt";
   if (mich?.tier === "bib_gourmand") return "hawker"; // Singapore's own "hawker gem" recognition
-  if (HAWKER_HINTS.test(text)) return "hawker";
+  if (HAWKER_HINTS.test(text) || HAWKER_HINTS.test(address)) return "hawker";
+  if (matchesKnownHawkerCentre(address)) return "hawker"; // e.g. "Chomp Chomp", "Tekka Centre" — names that don't contain the word "hawker" at all
   if (v.priceSymbol === "$" && (v.rating || 0) >= 4.3) return "hawker"; // fallback proxy — tightened bar now that dish keywords are gone
   return "restaurant";
 }
