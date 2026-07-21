@@ -273,9 +273,9 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   // a deliberate editorial floor, not just a scoring nudge: the category is
   // too easily crowded out to leave to score alone.
   let top8 = ranked.slice(0, 8);
-  const hasHawkerInTop3 = top8.slice(0, 3).some((v) => v._hawker);
+  const hasHawkerInTop3 = top8.slice(0, 3).some((v) => v._category === "hawker");
   if (!hasHawkerInTop3) {
-    const bestHawkerIdx = top8.findIndex((v) => v._hawker);
+    const bestHawkerIdx = top8.findIndex((v) => v._category === "hawker");
     if (bestHawkerIdx > 2) {
       const [hawkerPick] = top8.splice(bestHawkerIdx, 1);
       top8.splice(2, 0, hawkerPick); // slot it in as the 3rd pick, bumping the rest down
@@ -283,7 +283,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
     }
   }
 
-  const pool = top8.map(({ _score, _hawker, ...v }, i) => ({ ...v, win: i < 3 }));
+  const pool = top8.map(({ _score, _category, ...v }, i) => ({ ...v, win: i < 3 }));
 
   return { pool, guideYear: michelin.year, transitOnly, transitFallback };
 }
@@ -479,17 +479,33 @@ no prose, no markdown fences, in this exact shape:
 
 // ---------- Merge + rank ----------
 
-// Hawker/kopitiam-style food is a genuinely underrated category — small
-// footprint, modest review counts (older/local crowd reviews less on
-// Google), so a pure rating x reviews score structurally under-ranks it
-// against Instagram-friendly cafes. Detect it explicitly so it can be
-// boosted and guaranteed a spot, rather than left to compete on raw volume.
-const HAWKER_HINTS = /hawker|food court|foodcourt|kopitiam|coffee ?shop|eating house|food centre|food center|dim sum|noodle|porridge|chicken rice|laksa|prata|nasi/i;
-function isHawkerStyle(v, mich) {
-  if (mich?.tier === "bib_gourmand") return true; // Singapore's own "hawker gem" recognition
+// Hawker/kopitiam-style food, mall/office food courts, and sit-down
+// restaurants are genuinely different categories, not one "cheap eats"
+// bucket. A hawker centre stall is usually independently run, single-dish
+// specialist, and reviewed less by its (often older, local) regulars — so
+// a modest review count at a high rating is still a strong signal, and
+// price is basically irrelevant since everything there is cheap anyway.
+// A food court (Kopitiam, Koufu, Food Republic, Food Junction and similar
+// mall/office chains) is commercially operated — closer in spirit to a
+// chain restaurant than a hawker centre — so it shouldn't inherit "gem"
+// status just for being cheap and under one roof. A sit-down restaurant or
+// cafe is judged fine by the existing rating x reviews formula, since its
+// review base is more consistent.
+//
+// Deliberately NOT matching on dish keywords ("noodle", "laksa", "chicken
+// rice" etc.) anymore — that caught plenty of proper sit-down restaurants
+// that just happen to serve those dishes, which is a false signal, not a
+// real one.
+const FOODCOURT_HINTS = /\bfood court\b|koufu|kopitiam|food republic|food junction|foodfare|deppa food hall|food opera/i;
+const HAWKER_HINTS = /\bhawker\b|\beating house\b|\bcoffee ?shop\b|\bfood centre\b|\bfood center\b/i;
+
+function classifyVenue(v, mich) {
   const text = `${v.name} ${v.typeLabel || ""} ${v.primaryType || ""}`;
-  if (HAWKER_HINTS.test(text)) return true;
-  return v.priceSymbol === "$" && (v.rating || 0) >= 4.2;
+  if (FOODCOURT_HINTS.test(text)) return "foodcourt";
+  if (mich?.tier === "bib_gourmand") return "hawker"; // Singapore's own "hawker gem" recognition
+  if (HAWKER_HINTS.test(text)) return "hawker";
+  if (v.priceSymbol === "$" && (v.rating || 0) >= 4.3) return "hawker"; // fallback proxy — tightened bar now that dish keywords are gone
+  return "restaurant";
 }
 
 function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations) {
@@ -497,15 +513,17 @@ function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations) {
   let source = "reviews";
   if (stations && stations.length && nearestStationKm(v, stations) <= 0.45) tags.push("Near MRT");
 
-  const hawker = isHawkerStyle(v, mich);
+  const category = classifyVenue(v, mich);
 
   // Curated MICHELIN tier takes priority — it's verified data, not inferred
   if (mich) {
     tags.push(mich.label);
     if (mich.green) tags.push("Green Star");
     source = "michelin";
-  } else if (hawker) {
+  } else if (category === "hawker") {
     tags.push("Hawker gem");
+  } else if (category === "foodcourt") {
+    tags.push("Food court"); // informational, not celebratory — no score boost either
   }
   if (hype?.trending) { tags.push("Trending"); if (!mich) source = "trend"; }
   if (hype?.reviewedBy) tags.push(`@${hype.reviewedBy}`);
@@ -527,8 +545,8 @@ function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations) {
     tags,
     meta: metaParts.join(" · "),
     why: michWhy(mich, v) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
-    _score: scoreVenue(v, hype, mich, prefs, isRecent, hawker),
-    _hawker: hawker,
+    _score: scoreVenue(v, hype, mich, prefs, isRecent, category),
+    _category: category,
   };
 }
 
@@ -632,7 +650,7 @@ function michWhy(mich, v) {
   return (map[mich.tier] || "In the MICHELIN Guide") + near;
 }
 
-function scoreVenue(v, hype, mich, prefs, isRecent, isHawker) {
+function scoreVenue(v, hype, mich, prefs, isRecent, category) {
   // Cap the review-count signal — past a few thousand reviews it's telling
   // you a place is a high-traffic fixture, not that it's better than a place
   // with 800 reviews and a devoted following. Uncapped, this term let sheer
@@ -651,7 +669,10 @@ function scoreVenue(v, hype, mich, prefs, isRecent, isHawker) {
   if (v.reviewCount > 8000) score -= Math.min((v.reviewCount - 8000) / 4000, 3);
 
   if (mich) score += mich.weight; // 10/9/8 stars, 6 bib, 3 selected
-  if (isHawker && !mich) score += 4; // underrated category — give it a real structural edge, not just a soft nudge
+  // Only true hawker/kopitiam gets the structural boost — food courts are
+  // commercially generic by nature and compete on raw merit only, same as
+  // any sit-down restaurant.
+  if (category === "hawker" && !mich) score += 4;
   if (hype?.trending) score += 4;
   if (hype?.reviewedBy) score += 2;
   if (v.distanceKm != null) score -= v.distanceKm * 0.8;
