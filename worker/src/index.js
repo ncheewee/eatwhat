@@ -70,6 +70,8 @@ export default {
     // rather than a hand-maintained station list (which would go stale as new
     // lines/stations open).
     const transitOnly = body.transitOnly === true;
+    // How many suggestions the user wants to see, user-configurable 3-10 (default 3).
+    const count = Math.max(3, Math.min(10, Number(body.count) || 3));
 
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       return json({ error: "lat/lng required" }, 400);
@@ -79,7 +81,7 @@ export default {
       ? `:${prefs.style || "-"}:${prefs.ambience || "-"}:${prefs.novelty || "-"}:${(prefs.dietary || []).slice().sort().join(",")}`
       : "";
     const budgetKey = Array.isArray(budget) ? budget.slice().sort().join(",") : budget;
-    const cacheKey = `search:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budgetKey}${prefsKey}${transitOnly ? ":mrt" : ""}`;
+    const cacheKey = `search:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budgetKey}${prefsKey}${transitOnly ? ":mrt" : ""}:n${count}`;
 
     // Skip the cache entirely once novelty/recency personalization is in play —
     // the ranking depends on this specific user's recent history, so a shared
@@ -95,7 +97,7 @@ export default {
 
     let result;
     try {
-      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, env });
+      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, count, env });
     } catch (err) {
       result = { pool: MOCK_POOL, mock: true, error: String(err) };
     }
@@ -203,7 +205,7 @@ async function handlePlaceDetail(url, env) {
   return json(result);
 }
 
-async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, env }) {
+async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, count, env }) {
   if (!env.GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
   let venues = await fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey: env.GOOGLE_PLACES_API_KEY });
@@ -268,23 +270,25 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   );
   const ranked = rankVenues(merged);
 
-  // Guarantee at least one hawker/kopitiam-style pick makes the winning top 3
-  // — otherwise the raw score, even with the boost above, can still lose to
-  // several very-high-review-count restaurants clustered at the top. This is
-  // a deliberate editorial floor, not just a scoring nudge: the category is
-  // too easily crowded out to leave to score alone.
-  let top8 = ranked.slice(0, 8);
-  const hasHawkerInTop3 = top8.slice(0, 3).some((v) => v._category === "hawker");
-  if (!hasHawkerInTop3) {
-    const bestHawkerIdx = top8.findIndex((v) => v._category === "hawker");
-    if (bestHawkerIdx > 2) {
-      const [hawkerPick] = top8.splice(bestHawkerIdx, 1);
-      top8.splice(2, 0, hawkerPick); // slot it in as the 3rd pick, bumping the rest down
-      top8 = top8.slice(0, 8);
+  // Guarantee at least one hawker/kopitiam-style pick makes the winning
+  // set — otherwise the raw score, even with the boost above, can still
+  // lose to several very-high-review-count restaurants clustered at the
+  // top. This is a deliberate editorial floor, not just a scoring nudge:
+  // the category is too easily crowded out to leave to score alone.
+  const guaranteeSlot = Math.min(3, count); // still slot it in early even if the user asked for more than 3
+  const poolSize = Math.min(ranked.length, count + 5); // a little padding beyond the "winners" for the reveal animation
+  let topN = ranked.slice(0, poolSize);
+  const hasHawkerInWinners = topN.slice(0, count).some((v) => v._category === "hawker");
+  if (!hasHawkerInWinners) {
+    const bestHawkerIdx = topN.findIndex((v) => v._category === "hawker");
+    if (bestHawkerIdx >= count) {
+      const [hawkerPick] = topN.splice(bestHawkerIdx, 1);
+      topN.splice(guaranteeSlot - 1, 0, hawkerPick); // slot it in near the top, bumping the rest down
+      topN = topN.slice(0, poolSize);
     }
   }
 
-  const pool = top8.map(({ _score, _category, ...v }, i) => ({ ...v, win: i < 3 }));
+  const pool = topN.map(({ _score, _category, ...v }, i) => ({ ...v, win: i < count }));
 
   return { pool, guideYear: michelin.year, transitOnly, transitFallback };
 }

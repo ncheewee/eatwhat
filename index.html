@@ -155,14 +155,14 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .detail-gallery-dots span { width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.4) }
 .detail-gallery-dots span.on { background:var(--am) }
 .insight-block { margin-top:14px }
-.insight-label { font-weight:600; font-size:12.5px; letter-spacing:.04em; color:var(--tx2); text-transform:uppercase }
-.review-quote { font-size:13.5px; color:var(--tx2); font-style:italic; border-left:2px solid var(--bd2); padding:4px 0 4px 12px; margin-top:8px }
-.review-quote .ra { display:block; margin-top:3px; font-style:normal; font-size:12px; color:var(--tx2); opacity:.7 }
-.insight-loading { font-size:13px; color:var(--tx2); margin-top:14px }
-.detail-name { font-family:'Fraunces'; font-weight:600; font-size:22px }
-.detail-desc { font-size:14px; color:var(--tx2); margin-top:3px }
-.detail-meta { display:flex; gap:12px; font-size:13.5px; color:var(--tx2); flex-wrap:wrap; margin-top:10px }
-.detail-why { border-left:2px solid var(--am); padding:6px 0 6px 12px; font-size:14px; color:var(--tx2); font-style:italic; margin-top:14px }
+.insight-label { font-weight:600; font-size:14px; letter-spacing:.04em; color:var(--tx2); text-transform:uppercase }
+.review-quote { font-size:16px; line-height:1.5; color:var(--tx2); font-style:italic; border-left:2px solid var(--bd2); padding:4px 0 4px 12px; margin-top:10px }
+.review-quote .ra { display:block; margin-top:4px; font-style:normal; font-size:13.5px; color:var(--tx2); opacity:.7 }
+.insight-loading { font-size:15px; color:var(--tx2); margin-top:14px }
+.detail-name { font-family:'Fraunces'; font-weight:600; font-size:25px }
+.detail-desc { font-size:16px; color:var(--tx2); margin-top:4px }
+.detail-meta { display:flex; gap:12px; font-size:15px; color:var(--tx2); flex-wrap:wrap; margin-top:10px }
+.detail-why { border-left:2px solid var(--am); padding:6px 0 6px 12px; font-size:16px; color:var(--tx2); font-style:italic; margin-top:14px }
 .detail-maps-link { display:block; text-align:center; margin-top:16px; font-size:13px; color:var(--am); text-decoration:none }
 .action-row { display:flex; gap:8px }
 .action-row .btn { flex:1 }
@@ -198,7 +198,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 
 .ov { position:fixed; inset:0; background:rgba(0,0,0,.65); display:none; align-items:flex-end; z-index:100 }
 .ov.open { display:flex }
-.modal { background:var(--sf); border-top:1px solid var(--bd); padding:24px 20px 32px; width:100%; max-width:430px; margin:0 auto; animation:sup .25s ease }
+.modal { background:var(--sf); border-top:1px solid var(--bd); padding:24px 20px 32px; width:100%; max-width:430px; margin:0 auto; animation:sup .25s ease; max-height:88vh; overflow-y:auto; -webkit-overflow-scrolling:touch }
 @keyframes sup { from{transform:translateY(100%)} to{transform:translateY(0)} }
 .mh { width:32px; height:2px; background:var(--bd2); margin:0 auto 18px }
 #toast { position:fixed; top:16px; left:50%; transform:translateX(-50%) translateY(-60px); background:var(--sf2); border:1px solid var(--bd2); border-radius:2px; padding:9px 18px; font-size:14px; z-index:600; transition:transform .28s ease; white-space:nowrap; max-width:88vw; text-align:center; letter-spacing:.02em }
@@ -294,6 +294,14 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
       </div>
 
       <div class="card">
+        <div class="setup-row">
+          <div class="setup-label">Suggestions</div>
+          <div class="stepper">
+            <button onclick="stepCount(-1)">−</button>
+            <div id="countVal">3</div>
+            <button onclick="stepCount(1)">+</button>
+          </div>
+        </div>
         <div class="setup-row">
           <div class="setup-label">Budget</div>
           <div class="pill-select" id="budgetPills">
@@ -535,6 +543,9 @@ function toggleMenu(){ document.getElementById('avatarMenu').classList.toggle('o
 function closeMenu(){ document.getElementById('avatarMenu').classList.remove('open'); }
 function selectPill(el){ el.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); el.classList.add('active'); }
 
+let suggestionCount = 3;
+function stepCount(d){ suggestionCount = Math.max(3, Math.min(10, suggestionCount+d)); document.getElementById('countVal').textContent = suggestionCount; }
+
 // ---- Taste preferences (drives curation on the backend) ----
 function selectBudget(el){
   const group = el.parentElement;
@@ -694,6 +705,20 @@ function renderGallery(refs, fallbackEmoji, fallbackName){
   }
 }
 
+// Keep review excerpts to a genuine "quick glance" length — full Google
+// reviews can run 500+ words, which buried the photos/description below a
+// wall of text. Cut at a sentence boundary where possible so it doesn't
+// trail off mid-word.
+function truncateQuote(text, maxLen){
+  const t = String(text || '').trim();
+  if (t.length <= maxLen) return t;
+  const cut = t.slice(0, maxLen);
+  const lastSentence = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  const lastSpace = cut.lastIndexOf(' ');
+  const end = lastSentence > maxLen * 0.4 ? lastSentence + 1 : lastSpace;
+  return cut.slice(0, end > 0 ? end : maxLen).trim() + '…';
+}
+
 function renderInsights(detail){
   const el = document.getElementById('detailInsights');
   if (!detail){
@@ -705,7 +730,7 @@ function renderInsights(detail){
     parts.push(`<div class="insight-block"><div class="insight-label">About</div><div class="detail-desc" style="margin-top:6px">${escapeHtml(detail.editorialSummary)}</div></div>`);
   }
   if (detail.reviews && detail.reviews.length){
-    const quotes = detail.reviews.slice(0, 3).map(r => `<div class="review-quote">"${escapeHtml(r.text)}"<span class="ra">${escapeHtml(r.author)}${r.rating ? ' · ' + r.rating + '★' : ''}${r.when ? ' · ' + escapeHtml(r.when) : ''}</span></div>`).join('');
+    const quotes = detail.reviews.slice(0, 2).map(r => `<div class="review-quote">"${escapeHtml(truncateQuote(r.text, 180))}"<span class="ra">${escapeHtml(r.author)}${r.rating ? ' · ' + r.rating + '★' : ''}${r.when ? ' · ' + escapeHtml(r.when) : ''}</span></div>`).join('');
     parts.push(`<div class="insight-block"><div class="insight-label">What people say</div>${quotes}</div>`);
   }
   el.innerHTML = parts.join('');
@@ -731,6 +756,7 @@ function openDetail(idx){
     mapsLink.style.display = 'none';
   }
   document.getElementById('detailModal').classList.add('open');
+  document.querySelector('#detailModal .modal').scrollTop = 0;
 
   if (item.placeId && API_BASE && !API_BASE.includes('YOUR-WORKER-SUBDOMAIN')){
     fetch(`${API_BASE}/api/place-detail?id=${encodeURIComponent(item.placeId)}`)
@@ -844,7 +870,7 @@ function getSetupValues(){
   const radiusKm = Number(document.querySelector('#distPills .chip.active')?.dataset.v || 2);
   const transitOnly = document.getElementById('mrtSwitch')?.classList.contains('on') || false;
   const areaName = document.getElementById('areaSelect')?.value || null;
-  return { budget, radiusKm, transitOnly, areaName };
+  return { budget, radiusKm, transitOnly, areaName, count: suggestionCount };
 }
 
 function getLocation(){
@@ -871,12 +897,12 @@ function resolveAnchor(areaName){
   return getLocation();
 }
 
-async function fetchLivePool({ lat, lng, radiusKm, budget, transitOnly }){
+async function fetchLivePool({ lat, lng, radiusKm, budget, transitOnly, count }){
   if (!API_BASE || API_BASE.includes('YOUR-WORKER-SUBDOMAIN')) throw new Error('API_BASE not configured');
   const res = await fetch(API_BASE + '/api/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lat, lng, radiusKm, budget, transitOnly, prefs: getPrefs(), recentPlaceIds: recentPlaceIds() })
+    body: JSON.stringify({ lat, lng, radiusKm, budget, transitOnly, count, prefs: getPrefs(), recentPlaceIds: recentPlaceIds() })
   });
   if (!res.ok) throw new Error('API error ' + res.status);
   const data = await res.json();
@@ -888,7 +914,7 @@ async function fetchLivePool({ lat, lng, radiusKm, budget, transitOnly }){
 async function startShuffle(){
   clearSearchTimers();
   searchDone = false;
-  const { budget, radiusKm, transitOnly, areaName } = getSetupValues();
+  const { budget, radiusKm, transitOnly, areaName, count: suggestCount } = getSetupValues();
 
   const log = document.getElementById('reasonLog');
   const pool = document.getElementById('pool');
@@ -905,7 +931,7 @@ async function startShuffle(){
 
   // kick off the real call immediately, in parallel with the reasoning animation
   const livePromise = resolveAnchor(areaName)
-    .then(loc => fetchLivePool({ ...loc, radiusKm, budget, transitOnly }))
+    .then(loc => fetchLivePool({ ...loc, radiusKm, budget, transitOnly, count: suggestCount }))
     .catch(() => null);
 
   let count = 0;
