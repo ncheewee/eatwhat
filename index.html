@@ -1123,6 +1123,11 @@ function playPickReveal(isReroll){
   const landIdx = FINALISTS.length > 1 ? weightedPickIndex() : 0;
   const totalSteps = 14 + landIdx;
   let step = 0, delay = 70;
+  // Wall-clock ceiling, not just a step count — if the tab gets backgrounded
+  // mid-spin, browsers throttle setTimeout hard (sometimes to a crawl), which
+  // could otherwise leave the UI stuck on "Choosing…" indefinitely. This
+  // guarantees a real reveal within 4s of wall-clock time no matter what.
+  const startedAt = Date.now();
 
   function spinStep(){
     if (token !== pickSpinToken) return; // superseded by another reroll/reveal
@@ -1130,7 +1135,7 @@ function playPickReveal(isReroll){
     document.getElementById('pickPhoto').innerHTML = photoOrEmojiHTML(c, 500);
     document.getElementById('pickName').textContent = c.name;
     step++;
-    if (step < totalSteps){
+    if (step < totalSteps && Date.now() - startedAt < 4000){
       delay *= 1.14; // decelerate, like a wheel slowing down
       setTimeout(spinStep, delay);
     } else {
