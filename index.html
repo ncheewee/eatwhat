@@ -59,6 +59,11 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 #screens { flex:1; overflow:hidden; position:relative }
 .screen { position:absolute; inset:0; overflow-y:auto; padding:0 18px 24px; display:none; flex-direction:column; gap:16px; -webkit-overflow-scrolling:touch }
 .screen.active { display:flex }
+#bottomNav { display:flex; flex-shrink:0; border-top:1px solid var(--bd); background:var(--bg); padding:6px 6px calc(6px + env(safe-area-inset-bottom)) }
+.bn-item { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; background:none; border:none; padding:6px 4px; color:var(--tx3); cursor:pointer; font-family:inherit }
+.bn-item .bn-icon { font-size:19px; line-height:1 }
+.bn-item .bn-label { font-size:10.5px; font-weight:500; letter-spacing:.02em }
+.bn-item.active { color:var(--am) }
 
 .card { background:none; border:none; padding:0 }
 .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:13px 18px; border-radius:var(--rs); border:none; font-weight:600; font-size:15px; cursor:pointer; font-family:'Inter',sans-serif; letter-spacing:.02em }
@@ -85,6 +90,16 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .pill-select { display:flex; gap:6px; flex-wrap:wrap }
 .stepper { display:flex; align-items:center; gap:16px }
 .stepper button { width:28px; height:28px; border-radius:50%; border:1px solid var(--bd2); background:var(--sf2); color:var(--tx); font-size:17px; cursor:pointer; line-height:1 }
+.ew-slider { -webkit-appearance:none; appearance:none; width:100%; height:4px; border-radius:2px; background:var(--bd2); outline:none; cursor:pointer; margin:0 }
+.ew-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:20px; height:20px; border-radius:50%; background:var(--am); border:2px solid var(--bg); box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer }
+.ew-slider::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:var(--am); border:2px solid var(--bg); box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer }
+.ew-slider::-moz-range-track { height:4px; border-radius:2px; background:transparent }
+.dual-slider { position:relative; height:24px; display:flex; align-items:center }
+.dual-slider .ew-slider { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); background:none; pointer-events:none; z-index:2 }
+.dual-slider .ew-slider::-webkit-slider-thumb { pointer-events:auto }
+.dual-slider .ew-slider::-moz-range-thumb { pointer-events:auto }
+.ds-track { position:absolute; left:0; right:0; height:4px; border-radius:2px; background:var(--bd2); top:50%; transform:translateY(-50%); z-index:0 }
+.ds-fill { position:absolute; height:4px; border-radius:2px; background:var(--am); top:50%; transform:translateY(-50%); z-index:1 }
 #peopleVal { font-family:'Fraunces'; font-weight:600; font-size:17px; min-width:14px; text-align:center }
 
 /* SEARCH / CURATION */
@@ -231,14 +246,12 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 <div id="app">
   <div id="hdr">
     <div class="hdr-left">
-      <button id="backBtn" onclick="go('setup')">←</button>
+      <button id="backBtn" onclick="history.back()">←</button>
       <div class="logo" id="hdrTitle">EatWhat</div>
     </div>
     <div class="avatar-wrap">
       <div class="avatar" onclick="toggleMenu()" id="avatarEl">CW</div>
       <div class="menu" id="avatarMenu">
-        <button class="menu-item" onclick="go('history');closeMenu()">History</button>
-        <button class="menu-item" onclick="openTasteEdit();closeMenu()">Taste preferences</button>
         <button class="menu-item" onclick="go('settings');closeMenu()">Settings</button>
         <button class="menu-item" onclick="toggleTheme();closeMenu()">Light mode</button>
         <button class="menu-item" onclick="signOut();closeMenu()">Sign out</button>
@@ -303,21 +316,23 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
       </div>
 
       <div class="card">
-        <div class="setup-row">
-          <div class="setup-label">Suggestions</div>
-          <div class="stepper">
-            <button onclick="stepCount(-1)">−</button>
-            <div id="countVal">3</div>
-            <button onclick="stepCount(1)">+</button>
+        <div class="setup-row" style="flex-direction:column;align-items:stretch;gap:8px">
+          <div style="display:flex;justify-content:space-between;width:100%">
+            <div class="setup-label">Suggestions</div>
+            <div id="countVal" style="color:var(--am);font-weight:600">3</div>
           </div>
+          <input type="range" id="countSlider" class="ew-slider" min="3" max="10" step="1" value="3" oninput="onCountSlide(this.value)">
         </div>
-        <div class="setup-row">
-          <div class="setup-label">Budget</div>
-          <div class="pill-select" id="budgetPills">
-            <span class="chip" data-v="any" onclick="selectBudget(this)">Any</span>
-            <span class="chip" data-v="$" onclick="selectBudget(this)">$</span>
-            <span class="chip active" data-v="$$" onclick="selectBudget(this)">$$</span>
-            <span class="chip" data-v="$$$" onclick="selectBudget(this)">$$$</span>
+        <div class="setup-row" style="flex-direction:column;align-items:stretch;gap:8px">
+          <div style="display:flex;justify-content:space-between;width:100%">
+            <div class="setup-label">Budget</div>
+            <div id="budgetVal" style="color:var(--am);font-weight:600">$$</div>
+          </div>
+          <div class="dual-slider">
+            <div class="ds-track"></div>
+            <div class="ds-fill" id="budgetFill"></div>
+            <input type="range" id="budgetMin" class="ew-slider" min="1" max="3" step="1" value="2" oninput="onBudgetSlide()">
+            <input type="range" id="budgetMax" class="ew-slider" min="1" max="3" step="1" value="2" oninput="onBudgetSlide()">
           </div>
         </div>
         <div class="setup-row">
@@ -431,6 +446,18 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
     </div>
 
   </div>
+
+  <div id="bottomNav">
+    <button class="bn-item" id="bnHome" onclick="go('setup')">
+      <span class="bn-icon">⌂</span><span class="bn-label">Home</span>
+    </button>
+    <button class="bn-item" id="bnHistory" onclick="go('history')">
+      <span class="bn-icon">↺</span><span class="bn-label">History</span>
+    </button>
+    <button class="bn-item" id="bnTaste" onclick="openTasteEdit()">
+      <span class="bn-icon">✧</span><span class="bn-label">Taste</span>
+    </button>
+  </div>
 </div>
 
 <div id="toast"></div>
@@ -517,7 +544,9 @@ function showApp(user){
   }
   // First-time sign-in (or "continue without signing in") gets a quick taste quiz
   // so curation can be tailored from the very first search.
-  if (!hasPrefs()) go('taste'); else go('setup');
+  const startScreen = hasPrefs() ? 'setup' : 'taste';
+  history.replaceState({ screen: startScreen }, '', '#' + startScreen);
+  renderScreen(startScreen);
 }
 
 function skipLogin(){
@@ -540,6 +569,8 @@ window.addEventListener('load', () => {
   setTimeout(initGoogleAuth, 300);
   setTimeout(() => { if (!document.getElementById('loginGate').classList.contains('hidden')) document.getElementById('loginSkip').style.display = ''; }, 4000);
   populateAreaSelect();
+  paintSliderFill('countSlider', 3, 10, 3);
+  onBudgetSlide();
 });
 
 let tT;
@@ -555,26 +586,38 @@ function closeMenu(){ document.getElementById('avatarMenu').classList.remove('op
 function selectPill(el){ el.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); el.classList.add('active'); }
 
 let suggestionCount = 3;
-function stepCount(d){ suggestionCount = Math.max(3, Math.min(10, suggestionCount+d)); document.getElementById('countVal').textContent = suggestionCount; }
+function paintSliderFill(id, min, max, val){
+  const el = document.getElementById(id);
+  if (!el) return;
+  const pct = ((val - min) / (max - min)) * 100;
+  el.style.background = `linear-gradient(to right, var(--am) ${pct}%, var(--bd2) ${pct}%)`;
+}
+function onCountSlide(v){
+  suggestionCount = Math.max(3, Math.min(10, Number(v)));
+  document.getElementById('countVal').textContent = suggestionCount;
+  paintSliderFill('countSlider', 3, 10, suggestionCount);
+}
 
 // ---- Taste preferences (drives curation on the backend) ----
-function selectBudget(el){
-  const group = el.parentElement;
-  if (el.dataset.v === 'any'){
-    group.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
-    el.classList.add('active');
-    return;
-  }
-  group.querySelector('[data-v="any"]')?.classList.remove('active');
-  el.classList.toggle('active');
-  if (![...group.querySelectorAll('.chip')].some(c=>c.classList.contains('active'))){
-    group.querySelector('[data-v="any"]')?.classList.add('active');
-  }
+const BUDGET_LABELS = { 1: '$', 2: '$$', 3: '$$$' };
+function onBudgetSlide(){
+  const minEl = document.getElementById('budgetMin');
+  const maxEl = document.getElementById('budgetMax');
+  let lo = Number(minEl.value), hi = Number(maxEl.value);
+  if (lo > hi){ [lo, hi] = [hi, lo]; minEl.value = lo; maxEl.value = hi; }
+  document.getElementById('budgetVal').textContent = (lo === 1 && hi === 3) ? 'Any' : (lo === hi ? BUDGET_LABELS[lo] : `${BUDGET_LABELS[lo]}–${BUDGET_LABELS[hi]}`);
+  const pctLo = ((lo - 1) / 2) * 100, pctHi = ((hi - 1) / 2) * 100;
+  const fill = document.getElementById('budgetFill');
+  fill.style.left = pctLo + '%';
+  fill.style.width = (pctHi - pctLo) + '%';
 }
 function budgetValue(){
-  const active = [...document.querySelectorAll('#budgetPills .chip.active')].map(c=>c.dataset.v);
-  if (!active.length || active.includes('any')) return 'any';
-  return active;
+  const lo = Number(document.getElementById('budgetMin')?.value || 1);
+  const hi = Number(document.getElementById('budgetMax')?.value || 3);
+  if (lo === 1 && hi === 3) return 'any';
+  const out = [];
+  for (let i = lo; i <= hi; i++) out.push(BUDGET_LABELS[i]);
+  return out;
 }
 function budgetLabel(){
   const b = budgetValue();
@@ -641,17 +684,40 @@ function pushHistory(item){
 function recentPlaceIds(){ return getHistory().map(h => h.placeId); }
 
 const TITLES = {taste:'Your taste', setup:'EatWhat', shuffle:'Finding spots', pick:'Today’s pick', group:'Together', history:'History', settings:'Settings'};
-function go(id) {
+function renderScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + id)?.classList.add('active');
   document.getElementById('hdrTitle').textContent = TITLES[id] || 'EatWhat';
   document.getElementById('backBtn').classList.toggle('show', id !== 'setup');
   closeMenu();
+  if (typeof updateBottomNav === 'function') updateBottomNav(id);
   if (id === 'shuffle') setTimeout(startShuffle, 30);
   if (id === 'pick') setTimeout(renderPick, 30);
   if (id === 'group') setTimeout(initSwipe, 30);
   if (id === 'settings') renderSettingsTasteSummary();
   if (id === 'taste' && hasPrefs()) applyPrefsToTasteScreen(getPrefs());
+}
+
+// In-app back-navigation stack: gesture-back and the header back button both
+// just ask the browser to go back one history entry, which pops through
+// popstate below rather than exiting the PWA outright.
+function go(id) {
+  if (!history.state || history.state.screen !== id) {
+    history.pushState({ screen: id }, '', '#' + id);
+  }
+  renderScreen(id);
+}
+
+window.addEventListener('popstate', (e) => {
+  const id = (e.state && e.state.screen) || 'setup';
+  renderScreen(id);
+  closeDetail(); // any open modal shouldn't linger after a back navigation
+});
+
+const BOTTOM_NAV_MAP = { setup: 'bnHome', shuffle: 'bnHome', pick: 'bnHome', group: 'bnHome', history: 'bnHistory', taste: 'bnTaste' };
+function updateBottomNav(id){
+  const activeBtn = BOTTOM_NAV_MAP[id];
+  document.querySelectorAll('.bn-item').forEach(b => b.classList.toggle('active', b.id === activeBtn));
 }
 
 function renderSettingsTasteSummary(){
