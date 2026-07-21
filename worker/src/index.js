@@ -208,9 +208,6 @@ async function handlePlaceDetail(url, env) {
 async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, count, env }) {
   if (!env.GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
-  let venues = await fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey: env.GOOGLE_PLACES_API_KEY });
-  if (!venues.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
-
   // MICHELIN tagging — curated list, no API call, no cost, no hallucination.
   // Reads a KV override first (so the list can be refreshed without redeploying),
   // falling back to the embedded 2025 seed. Built early so the hawker-centre
@@ -230,45 +227,71 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   // Places already lists separately (which do match the Bib Gourmand/Selected
   // list via lookupMichelin below) still come through untouched.
   const GENERIC_HAWKER = /\b(food centre|food center|market|food court|hawker centre|hawker center|hawker complex|kopitiam|complex)\s*$/i;
-  venues = venues.filter((v) => !GENERIC_HAWKER.test(v.name) || lookupMichelin(v.name, michelin));
-  if (!venues.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
-  let candidates = venues;
+  // If the user asked for `count` picks, they should get `count` picks —
+  // Singapore has plenty of restaurants at any budget, so a narrow miss
+  // (small radius + strict budget + near-MRT-only) shouldn't leave someone
+  // with a shortlist of one. Budget and "near MRT only" are the user's actual
+  // preferences and stay fixed; radius is more of a convenience default, so
+  // that's the dial we widen — quietly retrying at a bigger radius (Google
+  // Places nearby search is capped at 20 raw results either way, so a wider
+  // circle surfaces a different — and hopefully larger — matching set) until
+  // there are enough candidates to fill the shortlist, capped at ~25km which
+  // covers the whole island.
+  const radiusLadder = Array.from(
+    new Set([radiusKm, radiusKm * 2, radiusKm * 3, 8, 15, 25].map((r) => Math.min(Math.max(r, radiusKm), 25)))
+  ).sort((a, b) => a - b);
+
+  let ranked = [];
   let transitFallback = false;
-  let stations = [];
-  if (transitOnly) {
-    try {
-      stations = await fetchTransitStations({ lat, lng, radiusKm, apiKey: env.GOOGLE_PLACES_API_KEY });
-      if (stations.length) {
-        const nearStation = venues.filter((v) => nearestStationKm(v, stations) <= 0.45);
-        if (nearStation.length) candidates = nearStation;
-        else transitFallback = true; // none matched — don't dead-end the search
-      } else {
-        transitFallback = true;
+  let usedRadiusKm = radiusKm;
+
+  for (const tryRadius of radiusLadder) {
+    let venues = await fetchNearbyPlaces({ lat, lng, radiusKm: tryRadius, budget, apiKey: env.GOOGLE_PLACES_API_KEY });
+    venues = venues.filter((v) => !GENERIC_HAWKER.test(v.name) || lookupMichelin(v.name, michelin));
+    usedRadiusKm = tryRadius;
+    if (!venues.length) continue;
+
+    let candidates = venues;
+    let stations = [];
+    if (transitOnly) {
+      try {
+        stations = await fetchTransitStations({ lat, lng, radiusKm: tryRadius, apiKey: env.GOOGLE_PLACES_API_KEY });
+        if (stations.length) {
+          const nearStation = venues.filter((v) => nearestStationKm(v, stations) <= 0.45);
+          if (nearStation.length) candidates = nearStation;
+          else transitFallback = true; // none matched — don't dead-end the search
+        } else {
+          transitFallback = true;
+        }
+      } catch {
+        transitFallback = true; // station lookup failed — fall back to unfiltered rather than error out
       }
-    } catch {
-      transitFallback = true; // station lookup failed — fall back to unfiltered rather than error out
     }
+
+    const shortlist = candidates.slice(0, 20);
+
+    // Optional: grounded "trending" tags via Gemini. Disabled by default because
+    // Search grounding requires a paid/prepay Gemini project. Set ENABLE_GROUNDING="true"
+    // once billing is in place to switch it on.
+    let hypeTags = {};
+    if (env.ENABLE_GROUNDING === "true" && env.GEMINI_API_KEY) {
+      try {
+        hypeTags = await fetchHypeTags({ venues: shortlist.slice(0, 15), apiKey: env.GEMINI_API_KEY });
+      } catch {
+        hypeTags = {}; // best-effort — never fail the request over this
+      }
+    }
+
+    const merged = shortlist.map((v) =>
+      mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), prefs, recentPlaceIds, stations)
+    );
+    ranked = rankVenues(merged);
+
+    if (ranked.length >= count || tryRadius >= 25) break;
   }
 
-  const shortlist = candidates.slice(0, 20);
-
-  // Optional: grounded "trending" tags via Gemini. Disabled by default because
-  // Search grounding requires a paid/prepay Gemini project. Set ENABLE_GROUNDING="true"
-  // once billing is in place to switch it on.
-  let hypeTags = {};
-  if (env.ENABLE_GROUNDING === "true" && env.GEMINI_API_KEY) {
-    try {
-      hypeTags = await fetchHypeTags({ venues: shortlist.slice(0, 15), apiKey: env.GEMINI_API_KEY });
-    } catch {
-      hypeTags = {}; // best-effort — never fail the request over this
-    }
-  }
-
-  const merged = shortlist.map((v) =>
-    mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), prefs, recentPlaceIds, stations)
-  );
-  const ranked = rankVenues(merged);
+  if (!ranked.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
   // Guarantee at least one hawker/kopitiam-style pick makes the winning
   // set — otherwise the raw score, even with the boost above, can still
@@ -289,8 +312,9 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   }
 
   const pool = topN.map(({ _score, _category, ...v }, i) => ({ ...v, win: i < count }));
+  const widenedSearch = usedRadiusKm > radiusKm;
 
-  return { pool, guideYear: michelin.year, transitOnly, transitFallback };
+  return { pool, guideYear: michelin.year, transitOnly, transitFallback, widenedSearch, searchRadiusKm: usedRadiusKm };
 }
 
 // ---------- Google Places API (New) ----------

@@ -90,16 +90,19 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .pill-select { display:flex; gap:6px; flex-wrap:wrap }
 .stepper { display:flex; align-items:center; gap:16px }
 .stepper button { width:28px; height:28px; border-radius:50%; border:1px solid var(--bd2); background:var(--sf2); color:var(--tx); font-size:17px; cursor:pointer; line-height:1 }
+.slider-pad { padding:0 14px; display:flex; flex-direction:column; gap:6px }
 .ew-slider { -webkit-appearance:none; appearance:none; width:100%; height:4px; border-radius:2px; background:var(--bd2); outline:none; cursor:pointer; margin:0 }
-.ew-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:20px; height:20px; border-radius:50%; background:var(--am); border:2px solid var(--bg); box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer }
-.ew-slider::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:var(--am); border:2px solid var(--bg); box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer }
+.ew-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:28px; height:28px; border-radius:50%; background:var(--am); border:2px solid var(--bg); box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer }
+.ew-slider::-moz-range-thumb { width:28px; height:28px; border-radius:50%; background:var(--am); border:2px solid var(--bg); box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer }
 .ew-slider::-moz-range-track { height:4px; border-radius:2px; background:transparent }
-.dual-slider { position:relative; height:24px; display:flex; align-items:center }
+.dual-slider { position:relative; height:28px; display:flex; align-items:center }
 .dual-slider .ew-slider { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); background:none; pointer-events:none; z-index:2 }
 .dual-slider .ew-slider::-webkit-slider-thumb { pointer-events:auto }
 .dual-slider .ew-slider::-moz-range-thumb { pointer-events:auto }
 .ds-track { position:absolute; left:0; right:0; height:4px; border-radius:2px; background:var(--bd2); top:50%; transform:translateY(-50%); z-index:0 }
 .ds-fill { position:absolute; height:4px; border-radius:2px; background:var(--am); top:50%; transform:translateY(-50%); z-index:1 }
+.tick-row { display:flex; justify-content:space-between; padding:0 14px }
+.tick-row .tick { width:3px; height:6px; border-radius:1px; background:var(--bd2) }
 #peopleVal { font-family:'Fraunces'; font-weight:600; font-size:17px; min-width:14px; text-align:center }
 
 /* SEARCH / CURATION */
@@ -148,18 +151,32 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .skip-hint { text-align:center; font-size:12px; color:var(--tx3); letter-spacing:.06em }
 
 /* PICK */
-.pick-photo { height:210px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:50px; overflow:hidden; transition:box-shadow .25s ease }
-.pick-card.spinning .pick-photo { animation:pickPulse .5s ease-in-out infinite }
+.pick-photo-wrap { position:relative }
+.pick-photo { position:relative; height:210px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:50px; overflow:hidden; perspective:650px; transition:box-shadow .25s ease }
 .pick-card.spinning #pickDetails { opacity:0; pointer-events:none }
 .pick-card.spinning .pick-name { opacity:.55 }
-.pick-card.landed .pick-photo { animation:none }
-.pick-card.flourish .pick-photo { box-shadow:0 0 0 3px var(--am), 0 0 24px rgba(201,162,74,.55) }
+.pick-card.flourish .pick-photo { animation:photoGlowPulse .9s ease forwards }
 .pick-card.flourish .pick-name { animation:pickPop .5s cubic-bezier(.2,.9,.3,1.4) }
-@keyframes pickPulse { 0%,100%{ filter:brightness(1) } 50%{ filter:brightness(1.18) } }
 @keyframes pickPop { 0%{ transform:scale(.9); opacity:0 } 60%{ transform:scale(1.05); opacity:1 } 100%{ transform:scale(1) } }
+@keyframes photoGlowPulse {
+  0% { box-shadow:0 0 0 0 rgba(201,162,74,0); transform:scale(.94) }
+  40% { box-shadow:0 0 34px 8px rgba(201,162,74,.6); transform:scale(1.035) }
+  70% { box-shadow:0 0 20px 4px rgba(201,162,74,.4); transform:scale(.99) }
+  100% { box-shadow:0 0 0 3px var(--am), 0 0 24px rgba(201,162,74,.55); transform:scale(1) }
+}
 #pickDetails { transition:opacity .3s ease }
 .pick-photo img { width:100%; height:100%; object-fit:cover; display:block }
 .pick-card { background:none }
+.orbit-ring { position:absolute; inset:0; transform-style:preserve-3d }
+.orbit-item { position:absolute; top:50%; left:50%; width:62px; height:82px; margin:-41px 0 0 -31px; border-radius:10px; background:var(--sf2); border:1px solid var(--bd2); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:24px; box-shadow:0 6px 14px rgba(0,0,0,.4) }
+.orbit-item img { width:100%; height:100%; object-fit:cover; display:block }
+.spark { position:absolute; opacity:0; font-size:18px; color:var(--am); pointer-events:none; text-shadow:0 0 6px rgba(201,162,74,.8); z-index:5 }
+.spark.s0{ top:6%; left:8% } .spark.s1{ top:10%; right:8% } .spark.s2{ bottom:8%; left:14% } .spark.s3{ bottom:12%; right:12% }
+.pick-card.flourish .spark.s0{ animation:sparkPop .9s ease .05s both }
+.pick-card.flourish .spark.s1{ animation:sparkPop .9s ease .15s both }
+.pick-card.flourish .spark.s2{ animation:sparkPop .9s ease .25s both }
+.pick-card.flourish .spark.s3{ animation:sparkPop .9s ease .35s both }
+@keyframes sparkPop { 0%{opacity:0; transform:scale(.3) rotate(0deg)} 45%{opacity:1; transform:scale(1.2) rotate(20deg)} 100%{opacity:0; transform:scale(.6) rotate(40deg)} }
 .pick-body { padding:16px 2px 0; display:flex; flex-direction:column; gap:11px }
 .pick-name { font-family:'Fraunces'; font-weight:600; font-size:23px }
 .pick-description { font-size:14px; color:var(--tx2); margin-top:-6px }
@@ -318,21 +335,27 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
       <div class="card">
         <div class="setup-row" style="flex-direction:column;align-items:stretch;gap:8px">
           <div style="display:flex;justify-content:space-between;width:100%">
-            <div class="setup-label">Suggestions</div>
+            <div class="setup-label">How many spots to shortlist?</div>
             <div id="countVal" style="color:var(--am);font-weight:600">3</div>
           </div>
-          <input type="range" id="countSlider" class="ew-slider" min="3" max="10" step="1" value="3" oninput="onCountSlide(this.value)">
+          <div class="slider-pad">
+            <input type="range" id="countSlider" class="ew-slider" min="3" max="10" step="1" value="3" oninput="onCountSlide(this.value)">
+            <div class="tick-row" id="countTicks"></div>
+          </div>
         </div>
         <div class="setup-row" style="flex-direction:column;align-items:stretch;gap:8px">
           <div style="display:flex;justify-content:space-between;width:100%">
             <div class="setup-label">Budget</div>
             <div id="budgetVal" style="color:var(--am);font-weight:600">$$</div>
           </div>
-          <div class="dual-slider">
-            <div class="ds-track"></div>
-            <div class="ds-fill" id="budgetFill"></div>
-            <input type="range" id="budgetMin" class="ew-slider" min="1" max="3" step="1" value="2" oninput="onBudgetSlide()">
-            <input type="range" id="budgetMax" class="ew-slider" min="1" max="3" step="1" value="2" oninput="onBudgetSlide()">
+          <div class="slider-pad">
+            <div class="dual-slider">
+              <div class="ds-track"></div>
+              <div class="ds-fill" id="budgetFill"></div>
+              <input type="range" id="budgetMin" class="ew-slider" min="1" max="3" step="1" value="2" oninput="onBudgetSlide()">
+              <input type="range" id="budgetMax" class="ew-slider" min="1" max="3" step="1" value="2" oninput="onBudgetSlide()">
+            </div>
+            <div class="tick-row" id="budgetTicks"></div>
           </div>
         </div>
         <div class="setup-row">
@@ -386,7 +409,13 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
     <div class="screen" id="screen-pick">
       <div style="font-weight:600;font-size:15px;letter-spacing:.03em;padding-top:16px" id="pickScreenTitle">CHOOSING…</div>
       <div class="pick-card" id="pickCard">
-        <div class="pick-photo" id="pickPhoto">🍜</div>
+        <div class="pick-photo-wrap">
+          <div class="pick-photo" id="pickPhoto">🍜</div>
+          <span class="spark s0">✦</span>
+          <span class="spark s1">✦</span>
+          <span class="spark s2">✦</span>
+          <span class="spark s3">✦</span>
+        </div>
         <div class="pick-body">
           <div class="pick-name" id="pickName">Nama Ramen Bar</div>
           <div id="pickDetails">
@@ -569,6 +598,8 @@ window.addEventListener('load', () => {
   setTimeout(initGoogleAuth, 300);
   setTimeout(() => { if (!document.getElementById('loginGate').classList.contains('hidden')) document.getElementById('loginSkip').style.display = ''; }, 4000);
   populateAreaSelect();
+  buildTicks('countTicks', 8);
+  buildTicks('budgetTicks', 3);
   paintSliderFill('countSlider', 3, 10, 3);
   onBudgetSlide();
 });
@@ -584,6 +615,16 @@ function toast(msg, type='') {
 function toggleMenu(){ document.getElementById('avatarMenu').classList.toggle('open'); }
 function closeMenu(){ document.getElementById('avatarMenu').classList.remove('open'); }
 function selectPill(el){ el.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); el.classList.add('active'); }
+
+function buildTicks(containerId, count){
+  const el = document.getElementById(containerId);
+  if (!el || el.childElementCount) return;
+  for (let i = 0; i < count; i++){
+    const t = document.createElement('div');
+    t.className = 'tick';
+    el.appendChild(t);
+  }
+}
 
 let suggestionCount = 3;
 function paintSliderFill(id, min, max, val){
@@ -985,6 +1026,7 @@ async function fetchLivePool({ lat, lng, radiusKm, budget, transitOnly, count })
   const data = await res.json();
   if (!data.pool || !data.pool.length) throw new Error('Empty result');
   if (data.transitFallback) toast('No spots found right by MRT — showing nearby options instead');
+  if (data.widenedSearch) toast(`Widened search to ${data.searchRadiusKm}km to find enough spots`);
   return data.pool;
 }
 
@@ -1153,6 +1195,7 @@ function skipSearch(){
 // ---- Pick ----
 let pickIdx = 0, rerolls = 0;
 let pickSpinToken = 0;
+let orbitRAF = null;
 
 function renderPick(){
   if (!FINALISTS.length) FINALISTS = POOL.slice(0,4);
@@ -1174,53 +1217,80 @@ function weightedPickIndex(){
   return 0;
 }
 
-// Slot-machine style reveal: rapidly cycle through the real shortlist,
-// decelerating, before landing on the winner with a flourish — instead of
-// silently showing the top pick with no ceremony.
+// Orbit-carousel reveal: the shortlist sits on a ring that spins around a
+// vertical axis (cards stay upright, like points on an equator) fast and
+// decelerating, landing on the winner facing front — which then pops with a
+// glowing flourish, instead of silently showing the top pick with no ceremony.
 function playPickReveal(isReroll){
   const token = ++pickSpinToken;
   const card = document.getElementById('pickCard');
   const title = document.getElementById('pickScreenTitle');
+  const stage = document.getElementById('pickPhoto');
   card.classList.remove('landed', 'flourish');
   card.classList.add('spinning');
   title.textContent = 'CHOOSING…';
   document.getElementById('rerollCount').textContent = isReroll ? 'Rerolling…' : 'Shuffling the shortlist…';
 
   const landIdx = FINALISTS.length > 1 ? weightedPickIndex() : 0;
-  const totalSteps = 14 + landIdx;
-  let step = 0, delay = 70;
-  // Wall-clock ceiling, not just a step count — if the tab gets backgrounded
-  // mid-spin, browsers throttle setTimeout hard (sometimes to a crawl), which
-  // could otherwise leave the UI stuck on "Choosing…" indefinitely. This
-  // guarantees a real reveal within 4s of wall-clock time no matter what.
-  const startedAt = Date.now();
+  pickIdx = landIdx;
+  const n = Math.max(1, FINALISTS.length);
+  const radius = 100;
+  const spinMs = 2500;
 
-  function spinStep(){
+  if (orbitRAF) cancelAnimationFrame(orbitRAF);
+  stage.innerHTML = '<div class="orbit-ring" id="orbitRing"></div>';
+  const ring = document.getElementById('orbitRing');
+  const items = FINALISTS.map((c, i) => {
+    const el = document.createElement('div');
+    el.className = 'orbit-item';
+    el.innerHTML = photoOrEmojiHTML(c, 100);
+    el.dataset.k = (i - landIdx + n) % n; // landIdx's card sits at k=0 — front-facing once the spin settles
+    ring.appendChild(el);
+    return el;
+  });
+
+  const startedAt = performance.now();
+  function tick(now){
     if (token !== pickSpinToken) return; // superseded by another reroll/reveal
-    const c = FINALISTS[step % FINALISTS.length];
-    document.getElementById('pickPhoto').innerHTML = photoOrEmojiHTML(c, 500);
-    document.getElementById('pickName').textContent = c.name;
-    step++;
-    if (step < totalSteps && Date.now() - startedAt < 4000){
-      delay *= 1.14; // decelerate, like a wheel slowing down
-      setTimeout(spinStep, delay);
+    // requestAnimationFrame pauses in a backgrounded tab, so a big elapsed
+    // jump on return just completes the spin immediately rather than hanging.
+    const p = Math.min(1, (now - startedAt) / spinMs);
+    const eased = 1 - Math.pow(1 - p, 3); // ease-out — fast then decelerating
+    const globalAngle = 1080 * eased; // three full turns, always a multiple of 360 at p=1
+
+    items.forEach((el) => {
+      const k = Number(el.dataset.k);
+      const deg = globalAngle + k * (360 / n);
+      const rad = deg * Math.PI / 180;
+      const x = radius * Math.sin(rad);
+      const z = radius * Math.cos(rad);
+      const depth = (z / radius + 1) / 2;
+      const scale = 0.55 + 0.55 * depth;
+      const opacity = 0.25 + 0.75 * depth;
+      el.style.transform = `translate(${x.toFixed(1)}px,0) translateZ(${z.toFixed(1)}px) scale(${scale.toFixed(2)})`;
+      el.style.opacity = opacity.toFixed(2);
+      el.style.zIndex = Math.round(z + radius);
+    });
+
+    if (p < 1){
+      orbitRAF = requestAnimationFrame(tick);
     } else {
-      pickIdx = landIdx;
       settlePick(token);
     }
   }
-  spinStep();
+  orbitRAF = requestAnimationFrame(tick);
 }
 
 function settlePick(token){
   if (token !== pickSpinToken) return;
+  if (orbitRAF) cancelAnimationFrame(orbitRAF);
   const card = document.getElementById('pickCard');
   card.classList.remove('spinning');
   card.classList.add('landed');
   document.getElementById('pickScreenTitle').textContent = "TODAY'S PICK";
-  paintPick();
+  paintPick(); // restores #pickPhoto to the winner's still image, over the orbit ring markup
   requestAnimationFrame(() => card.classList.add('flourish'));
-  setTimeout(() => card.classList.remove('flourish'), 700);
+  setTimeout(() => card.classList.remove('flourish'), 1000);
 }
 
 function paintPick(){
