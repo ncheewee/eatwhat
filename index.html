@@ -295,14 +295,6 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 
       <div class="card">
         <div class="setup-row">
-          <div class="setup-label">People</div>
-          <div class="stepper">
-            <button onclick="stepPeople(-1)">−</button>
-            <div id="peopleVal">2</div>
-            <button onclick="stepPeople(1)">+</button>
-          </div>
-        </div>
-        <div class="setup-row">
           <div class="setup-label">Budget</div>
           <div class="pill-select" id="budgetPills">
             <span class="chip" data-v="any" onclick="selectBudget(this)">Any</span>
@@ -343,7 +335,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
     <div class="screen" id="screen-shuffle" onclick="skipSearch()">
       <div>
         <div class="search-title disp" id="searchTitle">Curating your shortlist</div>
-        <div class="search-sub" id="searchSub">2 people · $$ · within 2km</div>
+        <div class="search-sub" id="searchSub">$$ · within 2km</div>
       </div>
       <div class="reason-log" id="reasonLog"></div>
       <div class="pool-wrap">
@@ -625,8 +617,6 @@ function pushHistory(item){
   localStorage.setItem('eatwhat_history', JSON.stringify(hist.slice(0, 15)));
 }
 function recentPlaceIds(){ return getHistory().map(h => h.placeId); }
-let people = 2;
-function stepPeople(d){ people = Math.max(1, Math.min(12, people+d)); document.getElementById('peopleVal').textContent = people; }
 
 const TITLES = {taste:'Your taste', setup:'EatWhat', shuffle:'Finding spots', pick:'Today’s pick', group:'Together', history:'History', settings:'Settings'};
 function go(id) {
@@ -854,7 +844,7 @@ function getSetupValues(){
   const radiusKm = Number(document.querySelector('#distPills .chip.active')?.dataset.v || 2);
   const transitOnly = document.getElementById('mrtSwitch')?.classList.contains('on') || false;
   const areaName = document.getElementById('areaSelect')?.value || null;
-  return { people, budget, radiusKm, transitOnly, areaName };
+  return { budget, radiusKm, transitOnly, areaName };
 }
 
 function getLocation(){
@@ -881,12 +871,12 @@ function resolveAnchor(areaName){
   return getLocation();
 }
 
-async function fetchLivePool({ lat, lng, radiusKm, budget, partySize, transitOnly }){
+async function fetchLivePool({ lat, lng, radiusKm, budget, transitOnly }){
   if (!API_BASE || API_BASE.includes('YOUR-WORKER-SUBDOMAIN')) throw new Error('API_BASE not configured');
   const res = await fetch(API_BASE + '/api/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lat, lng, radiusKm, budget, partySize, transitOnly, prefs: getPrefs(), recentPlaceIds: recentPlaceIds() })
+    body: JSON.stringify({ lat, lng, radiusKm, budget, transitOnly, prefs: getPrefs(), recentPlaceIds: recentPlaceIds() })
   });
   if (!res.ok) throw new Error('API error ' + res.status);
   const data = await res.json();
@@ -898,7 +888,7 @@ async function fetchLivePool({ lat, lng, radiusKm, budget, partySize, transitOnl
 async function startShuffle(){
   clearSearchTimers();
   searchDone = false;
-  const { people: partySize, budget, radiusKm, transitOnly, areaName } = getSetupValues();
+  const { budget, radiusKm, transitOnly, areaName } = getSetupValues();
 
   const log = document.getElementById('reasonLog');
   const pool = document.getElementById('pool');
@@ -911,11 +901,11 @@ async function startShuffle(){
   document.getElementById('skipHint').style.display='';
   document.getElementById('poolCount').innerHTML = '<b>0</b> candidates found';
   const whereLabel = whereMode === 'area' && areaName ? `in ${areaName}` : `within ${radiusKm}km`;
-  document.getElementById('searchSub').textContent = `${partySize} ${partySize>1?'people':'person'} · ${budgetLabel()} · ${whereLabel}${transitOnly?' · near MRT':''}`;
+  document.getElementById('searchSub').textContent = `${budgetLabel()} · ${whereLabel}${transitOnly?' · near MRT':''}`;
 
   // kick off the real call immediately, in parallel with the reasoning animation
   const livePromise = resolveAnchor(areaName)
-    .then(loc => fetchLivePool({ ...loc, radiusKm, budget, partySize, transitOnly }))
+    .then(loc => fetchLivePool({ ...loc, radiusKm, budget, transitOnly }))
     .catch(() => null);
 
   let count = 0;

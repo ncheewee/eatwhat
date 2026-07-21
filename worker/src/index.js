@@ -266,7 +266,24 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
     mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), prefs, recentPlaceIds, stations)
   );
   const ranked = rankVenues(merged);
-  const pool = ranked.slice(0, 8).map((v, i) => ({ ...v, win: i < 3 }));
+
+  // Guarantee at least one hawker/kopitiam-style pick makes the winning top 3
+  // — otherwise the raw score, even with the boost above, can still lose to
+  // several very-high-review-count restaurants clustered at the top. This is
+  // a deliberate editorial floor, not just a scoring nudge: the category is
+  // too easily crowded out to leave to score alone.
+  let top8 = ranked.slice(0, 8);
+  const hasHawkerInTop3 = top8.slice(0, 3).some((v) => v._hawker);
+  if (!hasHawkerInTop3) {
+    const bestHawkerIdx = top8.findIndex((v) => v._hawker);
+    if (bestHawkerIdx > 2) {
+      const [hawkerPick] = top8.splice(bestHawkerIdx, 1);
+      top8.splice(2, 0, hawkerPick); // slot it in as the 3rd pick, bumping the rest down
+      top8 = top8.slice(0, 8);
+    }
+  }
+
+  const pool = top8.map(({ _score, _hawker, ...v }, i) => ({ ...v, win: i < 3 }));
 
   return { pool, guideYear: michelin.year, transitOnly, transitFallback };
 }
@@ -315,9 +332,26 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, budget, apiKey }) {
 
   const EXCLUDED_TYPES = /lodging|hotel|resort|shopping_mall|tourist_attraction|casino/i;
 
+  // The real distinction isn't "chain vs independent" — it's "background
+  // infrastructure everyone already knows" vs "a distinctive dining
+  // experience," and a newly-arrived overseas chain (Korea's bhc opening
+  // its first Singapore outlet) is squarely the latter: genuinely
+  // interesting, not something anyone needs an app to find. Filtering all
+  // "chains", or the whole fast_food_restaurant type, would wrongly exclude
+  // exactly that case. So this list only hard-blocks the handful of
+  // multinationals that have been fully saturated in Singapore for decades
+  // (dozens of outlets, tens of thousands of reviews each, zero novelty) —
+  // it is NOT a general chain filter. Everything else, including other
+  // chains and new entrants, is left to compete on its own merits via the
+  // saturation-aware scoring below.
+  // Google's displayName often uses a curly apostrophe (’), not the ASCII
+  // one — the blocklist has to match both or names like "McDonald’s" slip through.
+  const SATURATED_CHAIN_BLOCKLIST = /\b(mcdonald['’]?s|kfc|kentucky fried chicken|burger king|subway|domino['’]?s|pizza hut|texas chicken|long john silver['’]?s|a\s?&\s?w|wendy['’]?s|taco bell)\b/i;
+
   return places
     // Places tags big hotels/malls as "restaurant" — they crowd out actual eateries
     .filter((p) => !EXCLUDED_TYPES.test((p.types || []).join(" ")))
+    .filter((p) => !SATURATED_CHAIN_BLOCKLIST.test(p.displayName?.text || ""))
     .filter((p) => {
       if (budget === "any" || !p.priceLevel) return true;
       const wanted = Array.isArray(budget) ? budget : [budget];
@@ -445,16 +479,33 @@ no prose, no markdown fences, in this exact shape:
 
 // ---------- Merge + rank ----------
 
+// Hawker/kopitiam-style food is a genuinely underrated category — small
+// footprint, modest review counts (older/local crowd reviews less on
+// Google), so a pure rating x reviews score structurally under-ranks it
+// against Instagram-friendly cafes. Detect it explicitly so it can be
+// boosted and guaranteed a spot, rather than left to compete on raw volume.
+const HAWKER_HINTS = /hawker|food court|foodcourt|kopitiam|coffee ?shop|eating house|food centre|food center|dim sum|noodle|porridge|chicken rice|laksa|prata|nasi/i;
+function isHawkerStyle(v, mich) {
+  if (mich?.tier === "bib_gourmand") return true; // Singapore's own "hawker gem" recognition
+  const text = `${v.name} ${v.typeLabel || ""} ${v.primaryType || ""}`;
+  if (HAWKER_HINTS.test(text)) return true;
+  return v.priceSymbol === "$" && (v.rating || 0) >= 4.2;
+}
+
 function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations) {
   const tags = [];
   let source = "reviews";
   if (stations && stations.length && nearestStationKm(v, stations) <= 0.45) tags.push("Near MRT");
+
+  const hawker = isHawkerStyle(v, mich);
 
   // Curated MICHELIN tier takes priority — it's verified data, not inferred
   if (mich) {
     tags.push(mich.label);
     if (mich.green) tags.push("Green Star");
     source = "michelin";
+  } else if (hawker) {
+    tags.push("Hawker gem");
   }
   if (hype?.trending) { tags.push("Trending"); if (!mich) source = "trend"; }
   if (hype?.reviewedBy) tags.push(`@${hype.reviewedBy}`);
@@ -476,7 +527,8 @@ function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations) {
     tags,
     meta: metaParts.join(" · "),
     why: michWhy(mich, v) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
-    _score: scoreVenue(v, hype, mich, prefs, isRecent),
+    _score: scoreVenue(v, hype, mich, prefs, isRecent, hawker),
+    _hawker: hawker,
   };
 }
 
@@ -580,9 +632,26 @@ function michWhy(mich, v) {
   return (map[mich.tier] || "In the MICHELIN Guide") + near;
 }
 
-function scoreVenue(v, hype, mich, prefs, isRecent) {
-  let score = (v.rating || 0) * Math.log10((v.reviewCount || 1) + 1);
+function scoreVenue(v, hype, mich, prefs, isRecent, isHawker) {
+  // Cap the review-count signal — past a few thousand reviews it's telling
+  // you a place is a high-traffic fixture, not that it's better than a place
+  // with 800 reviews and a devoted following. Uncapped, this term let sheer
+  // footfall (chains, mall food courts) drown out smaller genuine standouts.
+  const cappedReviews = Math.min(v.reviewCount || 0, 3000);
+  let score = (v.rating || 0) * Math.log10(cappedReviews + 1);
+
+  // Beyond the cap, add a gentle negative pressure for venues with truly
+  // huge review counts (long-established, high-turnover fixtures) — a
+  // second, independent nudge on top of the cap so any hyper-saturated spot
+  // (not just the handful of hard-blocked mega-chains) drifts down rather
+  // than dominating purely on volume. A newly-opened outlet — whether an
+  // independent stall or a first-in-Singapore overseas chain — has a low
+  // review count regardless of brand, so this never penalises genuine
+  // newcomers, only places that have been the "safe default" for years.
+  if (v.reviewCount > 8000) score -= Math.min((v.reviewCount - 8000) / 4000, 3);
+
   if (mich) score += mich.weight; // 10/9/8 stars, 6 bib, 3 selected
+  if (isHawker && !mich) score += 4; // underrated category — give it a real structural edge, not just a soft nudge
   if (hype?.trending) score += 4;
   if (hype?.reviewedBy) score += 2;
   if (v.distanceKm != null) score -= v.distanceKm * 0.8;
@@ -597,7 +666,7 @@ function scoreVenue(v, hype, mich, prefs, isRecent) {
 }
 
 function rankVenues(venues) {
-  return [...venues].sort((a, b) => b._score - a._score).map(({ _score, ...v }) => v);
+  return [...venues].sort((a, b) => b._score - a._score);
 }
 
 // ---------- Fallback demo data (used if keys are missing or calls fail) ----------
