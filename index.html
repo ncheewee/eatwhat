@@ -133,7 +133,16 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .skip-hint { text-align:center; font-size:12px; color:var(--tx3); letter-spacing:.06em }
 
 /* PICK */
-.pick-photo { height:210px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:50px; overflow:hidden }
+.pick-photo { height:210px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:50px; overflow:hidden; transition:box-shadow .25s ease }
+.pick-card.spinning .pick-photo { animation:pickPulse .5s ease-in-out infinite }
+.pick-card.spinning #pickDetails { opacity:0; pointer-events:none }
+.pick-card.spinning .pick-name { opacity:.55 }
+.pick-card.landed .pick-photo { animation:none }
+.pick-card.flourish .pick-photo { box-shadow:0 0 0 3px var(--am), 0 0 24px rgba(201,162,74,.55) }
+.pick-card.flourish .pick-name { animation:pickPop .5s cubic-bezier(.2,.9,.3,1.4) }
+@keyframes pickPulse { 0%,100%{ filter:brightness(1) } 50%{ filter:brightness(1.18) } }
+@keyframes pickPop { 0%{ transform:scale(.9); opacity:0 } 60%{ transform:scale(1.05); opacity:1 } 100%{ transform:scale(1) } }
+#pickDetails { transition:opacity .3s ease }
 .pick-photo img { width:100%; height:100%; object-fit:cover; display:block }
 .pick-card { background:none }
 .pick-body { padding:16px 2px 0; display:flex; flex-direction:column; gap:11px }
@@ -360,18 +369,20 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 
     <!-- PICK -->
     <div class="screen" id="screen-pick">
-      <div style="font-weight:600;font-size:15px;letter-spacing:.03em;padding-top:16px">TODAY'S PICK</div>
-      <div class="pick-card">
+      <div style="font-weight:600;font-size:15px;letter-spacing:.03em;padding-top:16px" id="pickScreenTitle">CHOOSING…</div>
+      <div class="pick-card" id="pickCard">
         <div class="pick-photo" id="pickPhoto">🍜</div>
         <div class="pick-body">
           <div class="pick-name" id="pickName">Nama Ramen Bar</div>
-          <div class="pick-description" id="pickDescription"></div>
-          <div class="tag-row" id="pickTags"></div>
-          <div class="pick-meta" id="pickMeta"></div>
-          <div class="why" id="pickWhy">Dinner · nearby · trending</div>
-          <div class="action-row">
-            <button class="btn btn-ghost" onclick="rerollPick()">Reroll</button>
-            <button class="btn btn-primary" onclick="acceptPick()">Accept</button>
+          <div id="pickDetails">
+            <div class="pick-description" id="pickDescription"></div>
+            <div class="tag-row" id="pickTags"></div>
+            <div class="pick-meta" id="pickMeta"></div>
+            <div class="why" id="pickWhy">Dinner · nearby · trending</div>
+            <div class="action-row" id="pickActionRow">
+              <button class="btn btn-ghost" onclick="rerollPick()">Reroll</button>
+              <button class="btn btn-primary" onclick="acceptPick()">Accept</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1075,11 +1086,72 @@ function skipSearch(){
 
 // ---- Pick ----
 let pickIdx = 0, rerolls = 0;
+let pickSpinToken = 0;
+
 function renderPick(){
   if (!FINALISTS.length) FINALISTS = POOL.slice(0,4);
-  pickIdx = 0; rerolls = 0;
-  paintPick();
+  rerolls = 0;
+  playPickReveal();
 }
+
+// Weighted random landing — the best-ranked pick is most likely, but not
+// guaranteed, so "Pick for me" still feels like a genuine reveal rather
+// than always just announcing FINALISTS[0].
+function weightedPickIndex(){
+  const weights = FINALISTS.map((_, i) => FINALISTS.length - i);
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < weights.length; i++){
+    if (r < weights[i]) return i;
+    r -= weights[i];
+  }
+  return 0;
+}
+
+// Slot-machine style reveal: rapidly cycle through the real shortlist,
+// decelerating, before landing on the winner with a flourish — instead of
+// silently showing the top pick with no ceremony.
+function playPickReveal(isReroll){
+  const token = ++pickSpinToken;
+  const card = document.getElementById('pickCard');
+  const title = document.getElementById('pickScreenTitle');
+  card.classList.remove('landed', 'flourish');
+  card.classList.add('spinning');
+  title.textContent = 'CHOOSING…';
+  document.getElementById('rerollCount').textContent = isReroll ? 'Rerolling…' : 'Shuffling the shortlist…';
+
+  const landIdx = FINALISTS.length > 1 ? weightedPickIndex() : 0;
+  const totalSteps = 14 + landIdx;
+  let step = 0, delay = 70;
+
+  function spinStep(){
+    if (token !== pickSpinToken) return; // superseded by another reroll/reveal
+    const c = FINALISTS[step % FINALISTS.length];
+    document.getElementById('pickPhoto').innerHTML = photoOrEmojiHTML(c, 500);
+    document.getElementById('pickName').textContent = c.name;
+    step++;
+    if (step < totalSteps){
+      delay *= 1.14; // decelerate, like a wheel slowing down
+      setTimeout(spinStep, delay);
+    } else {
+      pickIdx = landIdx;
+      settlePick(token);
+    }
+  }
+  spinStep();
+}
+
+function settlePick(token){
+  if (token !== pickSpinToken) return;
+  const card = document.getElementById('pickCard');
+  card.classList.remove('spinning');
+  card.classList.add('landed');
+  document.getElementById('pickScreenTitle').textContent = "TODAY'S PICK";
+  paintPick();
+  requestAnimationFrame(() => card.classList.add('flourish'));
+  setTimeout(() => card.classList.remove('flourish'), 700);
+}
+
 function paintPick(){
   const c = FINALISTS[pickIdx % FINALISTS.length];
   document.getElementById('pickName').textContent = c.name;
@@ -1090,7 +1162,7 @@ function paintPick(){
   document.getElementById('pickWhy').textContent = c.why;
   document.getElementById('rerollCount').textContent = rerolls ? `${rerolls} reroll${rerolls===1?'':'s'}` : '4s · 0 rerolls';
 }
-function rerollPick(){ pickIdx++; rerolls++; paintPick(); }
+function rerollPick(){ rerolls++; playPickReveal(true); }
 function acceptPick(){
   const c = FINALISTS[pickIdx % FINALISTS.length];
   pushHistory(c);
