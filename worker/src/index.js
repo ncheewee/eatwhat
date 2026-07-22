@@ -15,6 +15,7 @@
  */
 
 import { buildMichelinIndex, lookupMichelin } from "./michelin.js";
+import { buildCuratedIndex, lookupCurated } from "./curated-gems.js";
 import { matchesKnownHawkerCentre } from "./hawker-centres.js";
 
 const CACHE_TTL_SECONDS = 60 * 60 * 12; // 12h — Michelin/trending data doesn't move fast
@@ -220,6 +221,17 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   }
   const michelin = buildMichelinIndex(michelinData);
 
+  // Curated food-media picks (Eatbook, ladyironchef, etc.) — a second,
+  // independent discovery source alongside Places' own popularity ranking.
+  // See curated-gems.js for why this exists and the KV refresh path.
+  let curatedData = null;
+  if (env.SEARCH_CACHE) {
+    try {
+      curatedData = await env.SEARCH_CACHE.get("curated:list", "json");
+    } catch { /* fall through to embedded seed */ }
+  }
+  const curatedGems = buildCuratedIndex(curatedData);
+
   // "Tiong Bahru Market" or "Chinatown Complex Food Centre" as a whole is too
   // broad a suggestion — you can't order "a hawker centre". Drop the umbrella
   // venue itself, but only when it's NOT itself a specific curated stall name
@@ -266,7 +278,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   }
 
   const merged = shortlist.map((v) =>
-    mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), prefs, recentPlaceIds, stations, budget, transitOnly)
+    mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), lookupCurated(v.name, curatedGems), prefs, recentPlaceIds, stations, budget, transitOnly)
   );
   const ranked = rankVenues(merged);
 
@@ -539,7 +551,7 @@ no prose, no markdown fences, in this exact shape:
 const FOODCOURT_HINTS = /\bfood court\b|koufu|kopitiam|food republic|food junction|foodfare|deppa food hall|food opera/i;
 const HAWKER_HINTS = /\bhawker\b|\beating house\b|\bcoffee ?shop\b|\bfood centre\b|\bfood center\b/i;
 
-function classifyVenue(v, mich) {
+function classifyVenue(v, mich, curated) {
   const text = `${v.name} ${v.typeLabel || ""} ${v.primaryType || ""}`;
   // The address is a better signal than the stall's own name — a stall is
   // rarely named "X Hawker Centre" itself, but its formattedAddress almost
@@ -549,23 +561,30 @@ function classifyVenue(v, mich) {
   if (mich?.tier === "bib_gourmand") return "hawker"; // Singapore's own "hawker gem" recognition
   if (HAWKER_HINTS.test(text) || HAWKER_HINTS.test(address)) return "hawker";
   if (matchesKnownHawkerCentre(address)) return "hawker"; // e.g. "Chomp Chomp", "Tekka Centre" — names that don't contain the word "hawker" at all
+  // A food-media curated pick is, by construction, the kind of independent
+  // local favourite the hawker/kopitiam guarantee slot exists to protect —
+  // whether or not it happens to also match the name/address regexes above.
+  if (curated) return "hawker";
   if (v.priceSymbol === "$" && (v.rating || 0) >= 4.3) return "hawker"; // fallback proxy — tightened bar now that dish keywords are gone
   return "restaurant";
 }
 
-function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations, budget, transitOnly) {
+function mergeVenue(v, hype, mich, curated, prefs, recentPlaceIds, stations, budget, transitOnly) {
   const tags = [];
   let source = "reviews";
   const nearStation = !!(stations && stations.length && nearestStationKm(v, stations) <= 0.45);
   if (nearStation) tags.push("Near MRT");
 
-  const category = classifyVenue(v, mich);
+  const category = classifyVenue(v, mich, curated);
 
   // Curated MICHELIN tier takes priority — it's verified data, not inferred
   if (mich) {
     tags.push(mich.label);
     if (mich.green) tags.push("Green Star");
     source = "michelin";
+  } else if (curated) {
+    tags.push(`${curated.source} pick`); // e.g. "Eatbook pick" — human-curated, not Places-inferred
+    source = "curated";
   } else if (category === "hawker") {
     tags.push("Hawker gem");
   } else if (category === "foodcourt") {
@@ -591,8 +610,8 @@ function mergeVenue(v, hype, mich, prefs, recentPlaceIds, stations, budget, tran
     source,
     tags,
     meta: metaParts.join(" · "),
-    why: michWhy(mich, v) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
-    _score: scoreVenue(v, hype, mich, prefs, isRecent, category, budget, transitOnly, nearStation),
+    why: michWhy(mich, v) || (curated ? `Named a ${curated.area} favourite by ${curated.source}` : null) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
+    _score: scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, transitOnly, nearStation),
     _category: category,
   };
 }
@@ -697,7 +716,7 @@ function michWhy(mich, v) {
   return (map[mich.tier] || "In the MICHELIN Guide") + near;
 }
 
-function scoreVenue(v, hype, mich, prefs, isRecent, category, budget, transitOnly, nearStation) {
+function scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, transitOnly, nearStation) {
   // Cap the review-count signal — past a few thousand reviews it's telling
   // you a place is a high-traffic fixture, not that it's better than a place
   // with 800 reviews and a devoted following. Uncapped, this term let sheer
@@ -716,10 +735,16 @@ function scoreVenue(v, hype, mich, prefs, isRecent, category, budget, transitOnl
   if (v.reviewCount > 8000) score -= Math.min((v.reviewCount - 8000) / 4000, 3);
 
   if (mich) score += mich.weight; // 10/9/8 stars, 6 bib, 3 selected
+  // Food-media curation is a second, independent discovery signal from
+  // Places' own popularity ranking (see curated-gems.js) — weighted just
+  // under MICHELIN Selected (3) since it's less rigorously vetted, but well
+  // above the plain "hawker" structural boost, since a named blog/video pick
+  // is stronger evidence than a $ price + 4.3-rating proxy guess.
+  if (curated && !mich) score += 7;
   // Only true hawker/kopitiam gets the structural boost — food courts are
   // commercially generic by nature and compete on raw merit only, same as
   // any sit-down restaurant.
-  if (category === "hawker" && !mich) score += 4;
+  if (category === "hawker" && !mich && !curated) score += 4;
   if (hype?.trending) score += 4;
   if (hype?.reviewedBy) score += 2;
   if (v.distanceKm != null) score -= v.distanceKm * 0.8;
