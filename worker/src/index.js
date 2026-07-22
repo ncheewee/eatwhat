@@ -73,6 +73,11 @@ export default {
     const transitOnly = body.transitOnly === true;
     // How many suggestions the user wants to see, user-configurable 3-10 (default 3).
     const count = Math.max(3, Math.min(10, Number(body.count) || 3));
+    // Internal QA aid only — never surfaced in the app UI. Returns the full
+    // widened+ranked candidate pool (names/score/category, pre win-cut) so
+    // we can audit what Places actually returned vs. what won, without
+    // changing default response shape or caching behaviour for real users.
+    const debug = body.debug === true;
 
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       return json({ error: "lat/lng required" }, 400);
@@ -87,7 +92,7 @@ export default {
     // Skip the cache entirely once novelty/recency personalization is in play —
     // the ranking depends on this specific user's recent history, so a shared
     // cache entry would leak one person's ranking to another.
-    const canCache = env.SEARCH_CACHE && recentPlaceIds.length === 0;
+    const canCache = env.SEARCH_CACHE && recentPlaceIds.length === 0 && !debug;
 
     if (canCache) {
       const cached = await env.SEARCH_CACHE.get(cacheKey, "json");
@@ -98,7 +103,7 @@ export default {
 
     let result;
     try {
-      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, count, env });
+      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, count, env, debug });
     } catch (err) {
       result = { pool: MOCK_POOL, mock: true, error: String(err) };
     }
@@ -206,7 +211,7 @@ async function handlePlaceDetail(url, env) {
   return json(result);
 }
 
-async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, count, env }) {
+async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, count, env, debug }) {
   if (!env.GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
   // MICHELIN tagging — curated list, no API call, no cost, no hallucination.
@@ -310,7 +315,15 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   // plainly if none of the actual winners ended up tagged as near a station.
   const transitFallback = transitOnly && stations.length > 0 && !winners.some((v) => v.tags.includes("Near MRT"));
 
-  return { pool, guideYear: michelin.year, transitOnly, transitFallback };
+  const out = { pool, guideYear: michelin.year, transitOnly, transitFallback };
+  if (debug) {
+    out.debugPool = ranked.map((v, i) => ({
+      name: v.name, score: Math.round(v._score * 10) / 10, category: v._category,
+      tags: v.tags, won: i < winners.length,
+    }));
+    out.debugRawFetchCount = venues.length;
+  }
+  return out;
 }
 
 // ---------- Google Places API (New) ----------
