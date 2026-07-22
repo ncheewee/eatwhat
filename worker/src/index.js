@@ -15,7 +15,7 @@
  */
 
 import { buildMichelinIndex, lookupMichelin } from "./michelin.js";
-import { buildCuratedIndex, lookupCurated } from "./curated-gems.js";
+import { buildCuratedIndex, lookupCurated, GEMS } from "./curated-gems.js";
 import { matchesKnownHawkerCentre } from "./hawker-centres.js";
 
 const CACHE_TTL_SECONDS = 60 * 60 * 12; // 12h — Michelin/trending data doesn't move fast
@@ -268,7 +268,27 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
     }
   }
 
-  const shortlist = venues.slice(0, 40); // rank the whole widened pool, not just the first 20
+  let shortlist = venues.slice(0, 40); // rank the whole widened pool, not just the first 20
+
+  // Actively resolve curated food-media gems (see resolveCuratedGems doc
+  // comment) and append them AFTER the slice above, deduped by place id —
+  // this is what actually gets a scattered-across-town hawker gem into the
+  // pool at all, since Nearby Search's top-20-per-query cap otherwise
+  // excludes it regardless of scoring. Appending post-slice (rather than
+  // merging into `venues` pre-slice) guarantees a resolved gem is never
+  // truncated away by the cap sized for the nearby-search pool alone.
+  try {
+    const gemVenues = await resolveCuratedGems({ lat, lng, radiusKm, apiKey: env.GOOGLE_PLACES_API_KEY, env });
+    const seenIds = new Set(shortlist.map((v) => v.id));
+    for (const gv of gemVenues) {
+      if (gv.id && !seenIds.has(gv.id)) {
+        shortlist.push(gv);
+        seenIds.add(gv.id);
+      }
+    }
+  } catch {
+    /* best-effort — curated-gem resolution never blocks the main search */
+  }
 
   // Optional: grounded "trending" tags via Gemini. Disabled by default because
   // Search grounding requires a paid/prepay Gemini project. Set ENABLE_GROUNDING="true"
@@ -321,7 +341,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
       name: v.name, score: Math.round(v._score * 10) / 10, category: v._category,
       tags: v.tags, won: i < winners.length,
     }));
-    out.debugRawFetchCount = venues.length;
+    out.debugRawFetchCount = shortlist.length; // includes resolved curated gems, post-merge
   }
   return out;
 }
@@ -418,24 +438,100 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, apiKey }) {
     // Budget is no longer a hard filter here — see runPipeline. It's applied
     // as a scoring preference instead, so a narrow budget never empties out
     // the whole candidate pool before the shortlist gets a chance to fill.
-    .map((p) => ({
-      id: p.id,
-      name: p.displayName?.text || "Unnamed",
-      rating: p.rating || 0,
-      reviewCount: p.userRatingCount || 0,
-      priceLevel: p.priceLevel || "PRICE_LEVEL_UNSPECIFIED",
-      priceSymbol: symbolForPriceLevel(p.priceLevel),
-      openNow: p.currentOpeningHours?.openNow ?? null,
-      distanceKm: haversineKm(lat, lng, p.location?.latitude, p.location?.longitude),
-      lat: p.location?.latitude ?? null,
-      lng: p.location?.longitude ?? null,
-      formattedAddress: p.formattedAddress || "",
-      primaryType: p.primaryType || "restaurant",
-      typeLabel: p.primaryTypeDisplayName?.text || null,
-      types: p.types || [],
-      emoji: emojiForType(p.primaryType, p.types),
-      photoRef: p.photos?.[0]?.name || null, // e.g. "places/ChIJ.../photos/AWU5..."
-    }));
+    .map((p) => normalizePlace(p, lat, lng));
+}
+
+/** Shared Places-API-raw-object → internal venue shape, used by both the
+ * nearby search and the curated-gems Text Search resolver below. */
+function normalizePlace(p, lat, lng) {
+  return {
+    id: p.id,
+    name: p.displayName?.text || "Unnamed",
+    rating: p.rating || 0,
+    reviewCount: p.userRatingCount || 0,
+    priceLevel: p.priceLevel || "PRICE_LEVEL_UNSPECIFIED",
+    priceSymbol: symbolForPriceLevel(p.priceLevel),
+    openNow: p.currentOpeningHours?.openNow ?? null,
+    distanceKm: haversineKm(lat, lng, p.location?.latitude, p.location?.longitude),
+    lat: p.location?.latitude ?? null,
+    lng: p.location?.longitude ?? null,
+    formattedAddress: p.formattedAddress || "",
+    primaryType: p.primaryType || "restaurant",
+    typeLabel: p.primaryTypeDisplayName?.text || null,
+    types: p.types || [],
+    emoji: emojiForType(p.primaryType, p.types),
+    photoRef: p.photos?.[0]?.name || null, // e.g. "places/ChIJ.../photos/AWU5..."
+  };
+}
+
+async function searchTextRaw({ query, apiKey }) {
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": PLACES_FIELD_MASK,
+    },
+    body: JSON.stringify({ textQuery: query, maxResultCount: 1 }),
+  });
+  if (!res.ok) throw new Error(`Places Text Search error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return data.places || [];
+}
+
+const GEM_CACHE_TTL = 60 * 60 * 24 * 60; // 60 days — a stall's location/rating barely moves week to week
+
+/**
+ * Actively resolve curated food-media gems by name via Places Text Search,
+ * rather than hoping fetchNearbyPlaces' rank-limited (top-20-per-query)
+ * nearby search happens to surface them.
+ *
+ * WHY THIS EXISTS: a 2026-07-22 debug-mode audit found that for Ang Mo Kio,
+ * widening the nearby-search radius from 2km to 5km barely changed the raw
+ * candidate count (29→32) and still surfaced zero of Eatbook's named
+ * street-hawker picks — they simply don't rank in the top 20 by popularity
+ * OR by raw distance from the search pin, so scoring/curated-tagging never
+ * got a chance to run on them at all. Text Search finds a place by name
+ * directly, sidestepping that ranking cap entirely.
+ *
+ * Each gem's resolved Places data is cached in KV for GEM_CACHE_TTL, so this
+ * only costs a live API call once per gem, ever (until the cache expires) —
+ * subsequent requests, from any user/location, hit the cache.
+ */
+async function resolveCuratedGems({ lat, lng, radiusKm, apiKey, env }) {
+  const results = await Promise.all(
+    GEMS.map(async (gem) => {
+      const cacheKey = `gemplace:${gem.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      let raw = null;
+      if (env.SEARCH_CACHE) {
+        try {
+          raw = await env.SEARCH_CACHE.get(cacheKey, "json");
+        } catch { /* fall through to live lookup */ }
+      }
+      if (!raw) {
+        try {
+          const [hit] = await searchTextRaw({ query: `${gem.name} ${gem.area} Singapore`, apiKey });
+          raw = hit || null;
+        } catch {
+          raw = null; // best-effort — one bad lookup shouldn't fail the whole request
+        }
+        if (raw && env.SEARCH_CACHE) {
+          try {
+            await env.SEARCH_CACHE.put(cacheKey, JSON.stringify(raw), { expirationTtl: GEM_CACHE_TTL });
+          } catch { /* cache write failure is non-fatal */ }
+        }
+      }
+      return raw;
+    })
+  );
+
+  return results
+    .filter(Boolean)
+    .map((p) => normalizePlace(p, lat, lng))
+    // Text Search isn't geo-scoped like Nearby Search — a name can resolve to
+    // a branch anywhere in Singapore, so this radius check is load-bearing,
+    // not a redundant safety net.
+    .filter((v) => v.distanceKm != null && v.distanceKm <= radiusKm);
 }
 
 async function fetchTransitStations({ lat, lng, radiusKm, apiKey }) {
