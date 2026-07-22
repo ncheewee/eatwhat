@@ -13,6 +13,15 @@
  * scoring — tuning weights on the same signal doesn't fix that; a second,
  * independent discovery source does.
  *
+ * SOURCE TIERS: not all curated sources are trusted equally. Per Chee Wee's
+ * 2026-07-22 direction, named video creators he personally follows/trusts
+ * (GetFed's Ryan Tan — née "Food King"; Alderic/@aldericc) outrank the
+ * written food-media outlets (Eatbook, Miss Tam Chiak, etc.), which in turn
+ * outrank the generic $-price+rating hawker fallback proxy. See
+ * SOURCE_WEIGHT below and weightForSource() — index.js's scoreVenue() reads
+ * from this instead of a flat bonus, and consulted before it, not "instead
+ * of": a Michelin match still takes priority over any curated source.
+ *
  * SCHEMA: each entry is { name, area, source } — `area` is informational
  * (helps a human auditor sanity-check matches at a glance) and is NOT used
  * for geographic filtering; matching is purely by normalised name against
@@ -89,7 +98,50 @@ export const GEMS = [
   { name: "Hajime Tonkatsu & Ramen", area: "Thomson", source: "Eatbook" },
   { name: "Tsukada Nojo", area: "Thomson", source: "Eatbook" },
   { name: "San Ren Xing", area: "Thomson", source: "Eatbook" },
+
+  // --- GetFed / Ryan Tan (Night Owl Cinematics) — formerly "Food King" ---
+  // Sourced from overkill.sg's written recaps of Get Fed episodes 3, 5 and 7
+  // (2026-07-22), which list Ryan's specific standing recommendations with
+  // addresses. Highest-weighted tier — see SOURCE_WEIGHT below.
+  { name: "Hainan Fried Hokkien Mee", area: "Golden Mile Food Centre", source: "GetFed" }, // Ryan's all-time favourite hokkien mee
+  { name: "Heng Huat Fried Kway Tiao", area: "Pasir Panjang", source: "GetFed" },
+  { name: "Classic Cakes", area: "Sunset Way", source: "GetFed" },
+  { name: "Beach Road Prawn Noodle House", area: "East Coast", source: "GetFed" },
+  { name: "Union Farm Chee Pow Kai", area: "Toh Guan", source: "GetFed" },
+  { name: "Joo Siah Bak Kut Teh", area: "Jurong East", source: "GetFed" },
+  { name: "88 Hong Kong Roast Meat Specialist", area: "Lavender", source: "GetFed" },
+  { name: "Yong Chun Wan Ton Noodle", area: "Bukit Merah", source: "GetFed" },
+  { name: "Dickson Nasi Lemak", area: "Joo Chiat", source: "GetFed" },
+  { name: "Petit Pain", area: "Joo Chiat", source: "GetFed" },
+
+  // --- Alderic (@aldericc, Instagram/TikTok/YouTube) ---
+  // Sourced from his "Top 5 Places to Eat in Singapore" video and separate
+  // laksa/mala top-picks videos (2026-07-22 search). Highest-weighted tier.
+  { name: "George's Katong Laksa", area: "Katong", source: "Alderic" },
+  { name: "A Hot Hideout", area: "Woodlands", source: "Alderic" }, // his mala top pick
+  { name: "Umai", area: "Beach Road", source: "Alderic" },
+  { name: "Sweedy", area: "Hougang", source: "Alderic" },
+  { name: "Bao Er Cafe", area: "Balestier", source: "Alderic" },
+  { name: "Kobashi", area: "South Bridge Road", source: "Alderic" },
+  { name: "Dawn", area: "South Bridge Road", source: "Alderic" },
 ];
+
+/**
+ * Higher weight = more trusted. Consulted by scoreVenue() in index.js in
+ * place of the old flat +7 curated bonus. Update this table (rather than
+ * touching index.js) whenever a new source tier needs adding — e.g. if
+ * Chee Wee names another YouTuber/blogger he weighs highly.
+ */
+export const SOURCE_WEIGHT = {
+  GetFed: 10,
+  Alderic: 10,
+  Eatbook: 7,
+};
+const DEFAULT_SOURCE_WEIGHT = 7; // any future source not listed above (e.g. ladyironchef, Miss Tam Chiak) defaults here
+
+export function weightForSource(source) {
+  return SOURCE_WEIGHT[source] ?? DEFAULT_SOURCE_WEIGHT;
+}
 
 /** Same normalisation as michelin.js so the two indexes behave consistently. */
 function normalizeName(name) {

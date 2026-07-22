@@ -15,7 +15,7 @@
  */
 
 import { buildMichelinIndex, lookupMichelin } from "./michelin.js";
-import { buildCuratedIndex, lookupCurated, GEMS } from "./curated-gems.js";
+import { buildCuratedIndex, lookupCurated, GEMS, weightForSource } from "./curated-gems.js";
 import { matchesKnownHawkerCentre } from "./hawker-centres.js";
 
 const CACHE_TTL_SECONDS = 60 * 60 * 12; // 12h — Michelin/trending data doesn't move fast
@@ -855,11 +855,12 @@ function scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, t
 
   if (mich) score += mich.weight; // 10/9/8 stars, 6 bib, 3 selected
   // Food-media curation is a second, independent discovery signal from
-  // Places' own popularity ranking (see curated-gems.js) — weighted just
-  // under MICHELIN Selected (3) since it's less rigorously vetted, but well
-  // above the plain "hawker" structural boost, since a named blog/video pick
-  // is stronger evidence than a $ price + 4.3-rating proxy guess.
-  if (curated && !mich) score += 7;
+  // Places' own popularity ranking (see curated-gems.js) — weighted per
+  // source tier (trusted YouTube creators > written food-media outlets),
+  // see SOURCE_WEIGHT in curated-gems.js. Even the lowest curated tier
+  // outweighs the plain "hawker" structural boost below, since a named
+  // blog/video pick is stronger evidence than a $ price + 4.3-rating guess.
+  if (curated && !mich) score += weightForSource(curated.source);
   // Only true hawker/kopitiam gets the structural boost — food courts are
   // commercially generic by nature and compete on raw merit only, same as
   // any sit-down restaurant.
