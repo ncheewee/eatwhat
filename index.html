@@ -264,6 +264,18 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .modal { background:var(--sf); border-top:1px solid var(--bd); padding:24px 20px 32px; width:100%; max-width:430px; margin:0 auto; animation:sup .25s ease; max-height:88vh; overflow-y:auto; -webkit-overflow-scrolling:touch }
 @keyframes sup { from{transform:translateY(100%)} to{transform:translateY(0)} }
 .mh { width:32px; height:2px; background:var(--bd2); margin:0 auto 18px }
+.area-picker-btn { background:var(--sf2); color:var(--tx); border:1px solid var(--bd2); border-radius:var(--r); padding:8px 12px; font-size:14px; font-family:inherit; display:flex; align-items:center; gap:8px; cursor:pointer }
+.area-picker-btn .car { font-size:10px; color:var(--tx3) }
+.area-sheet-title { font-family:'Fraunces',Georgia,serif; font-size:19px; font-weight:600; margin-bottom:14px }
+.area-search { width:100%; background:var(--sf2); border:1px solid var(--bd2); border-radius:var(--r); padding:11px 12px; font-size:14px; font-family:inherit; color:var(--tx); margin-bottom:8px }
+.area-search:focus { outline:none; border-color:var(--am) }
+.area-list { max-height:48vh; overflow-y:auto; -webkit-overflow-scrolling:touch }
+.area-row { display:flex; justify-content:space-between; align-items:center; padding:13px 2px; border-bottom:1px solid var(--bd); cursor:pointer; font-size:15px }
+.area-row:last-child { border-bottom:none }
+.area-row.active { color:var(--am) }
+.area-row .ck { color:var(--am); font-size:14px; visibility:hidden }
+.area-row.active .ck { visibility:visible }
+.area-empty { text-align:center; color:var(--tx3); padding:24px 0; font-size:14px }
 #toast { position:fixed; top:16px; left:50%; transform:translateX(-50%) translateY(-60px); background:var(--sf2); border:1px solid var(--bd2); border-radius:2px; padding:9px 18px; font-size:14px; z-index:600; transition:transform .28s ease; white-space:nowrap; max-width:88vw; text-align:center; letter-spacing:.02em }
 #toast.show { transform:translateX(-50%) translateY(0) }
 #toast.ok { border-color:var(--am); color:var(--am) }
@@ -399,7 +411,9 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
         </div>
         <div class="setup-row" id="areaRow" style="display:none">
           <div class="setup-label">Area</div>
-          <select id="areaSelect" style="background:var(--sf);color:var(--tx);border:1px solid var(--bd2);border-radius:4px;padding:6px 10px;font-size:14px;font-family:inherit"></select>
+          <button type="button" class="area-picker-btn" id="areaPickerBtn" onclick="openAreaPicker()">
+            <span id="areaPickerLabel">Choose area</span><span class="car">▾</span>
+          </button>
         </div>
         <div class="setup-row">
           <div class="setup-label">Near MRT only</div>
@@ -554,6 +568,15 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
       <button class="thumb-btn" id="thumbDown" onclick="rateThumb(false)">👎</button>
       <button class="thumb-btn" id="thumbUp" onclick="rateThumb(true)">👍</button>
     </div>
+  </div>
+</div>
+
+<div class="ov" id="areaPickerModal" onclick="if(event.target===this) closeAreaPicker()">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="area-sheet-title">Choose an area</div>
+    <input type="text" class="area-search" id="areaSearchInput" placeholder="Search areas…" oninput="filterAreaList()">
+    <div class="area-list" id="areaList"></div>
   </div>
 </div>
 
@@ -1042,17 +1065,60 @@ function setWhereMode(mode){
   document.getElementById('distanceRow').style.display = mode === 'near' ? '' : 'none';
   document.getElementById('areaRow').style.display = mode === 'area' ? '' : 'none';
 }
+let selectedAreaName = null;
+
+// Replaced the native OS <select> (looked out of place against the rest of
+// the app's own design language) with an app-styled bottom sheet, reusing
+// the same .ov/.modal pattern as the detail and feedback sheets.
 function populateAreaSelect(){
-  const sel = document.getElementById('areaSelect');
-  if (!sel || sel.options.length) return;
-  sel.innerHTML = SG_AREAS.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
+  if (selectedAreaName) return; // already initialised
+  if (SG_AREAS.length) selectedAreaName = SG_AREAS[0].name;
+  updateAreaPickerLabel();
+  renderAreaList();
+}
+
+function renderAreaList(filter = ''){
+  const list = document.getElementById('areaList');
+  if (!list) return;
+  const q = filter.trim().toLowerCase();
+  const items = q ? SG_AREAS.filter(a => a.name.toLowerCase().includes(q)) : SG_AREAS;
+  list.innerHTML = items.length
+    ? items.map(a => `<div class="area-row${a.name === selectedAreaName ? ' active' : ''}" onclick="pickArea(${JSON.stringify(a.name)})"><span>${a.name}</span><span class="ck">✓</span></div>`).join('')
+    : '<div class="area-empty">No matching areas</div>';
+}
+
+function filterAreaList(){
+  renderAreaList(document.getElementById('areaSearchInput')?.value || '');
+}
+
+function pickArea(name){
+  selectedAreaName = name;
+  updateAreaPickerLabel();
+  closeAreaPicker();
+}
+
+function updateAreaPickerLabel(){
+  const el = document.getElementById('areaPickerLabel');
+  if (el) el.textContent = selectedAreaName || 'Choose area';
+}
+
+function openAreaPicker(){
+  const input = document.getElementById('areaSearchInput');
+  if (input) input.value = '';
+  renderAreaList();
+  document.getElementById('areaPickerModal').classList.add('open');
+  setTimeout(() => input?.focus(), 50);
+}
+
+function closeAreaPicker(){
+  document.getElementById('areaPickerModal').classList.remove('open');
 }
 
 function getSetupValues(){
   const budget = budgetValue();
   const radiusKm = Number(document.querySelector('#distPills .chip.active')?.dataset.v || 2);
   const transitOnly = document.getElementById('mrtSwitch')?.classList.contains('on') || false;
-  const areaName = document.getElementById('areaSelect')?.value || null;
+  const areaName = selectedAreaName || null;
   return { budget, radiusKm, transitOnly, areaName, count: suggestionCount };
 }
 
