@@ -1338,11 +1338,14 @@ function settlePick(token){
   card.classList.add('landed');
   document.getElementById('pickScreenTitle').textContent = "TODAY'S PICK";
   paintPick(); // restores #pickPhoto to the winner's still image, over the orbit ring markup
-  requestAnimationFrame(() => {
-    card.classList.add('flourish');
-    spawnConfetti(14);
-    setTimeout(() => spawnConfetti(10), 300); // second burst — one pop doesn't read as "fireworks"
-  });
+  // 'flourish' was already removed back at the start of the spin (seconds
+  // ago), so there's no reflow-batching reason to gate this add behind a
+  // frame callback — doing it directly also means it isn't at the mercy of
+  // requestAnimationFrame, which some backgrounded/throttled contexts never
+  // fire at all.
+  card.classList.add('flourish');
+  spawnConfetti(14);
+  setTimeout(() => spawnConfetti(10), 300); // second burst — one pop doesn't read as "fireworks"
   setTimeout(() => { if (token === pickSpinToken) card.classList.remove('flourish'); }, 1700);
 }
 
