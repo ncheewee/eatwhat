@@ -1330,7 +1330,7 @@ function settlePick(token){
     spawnConfetti(14);
     setTimeout(() => spawnConfetti(10), 300); // second burst — one pop doesn't read as "fireworks"
   });
-  setTimeout(() => card.classList.remove('flourish'), 1700);
+  setTimeout(() => { if (token === pickSpinToken) card.classList.remove('flourish'); }, 1700);
 }
 
 // A handful of small colored bits fired outward from the photo's center —
