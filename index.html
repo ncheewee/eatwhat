@@ -350,7 +350,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
     <!-- SETUP -->
     <div class="screen active" id="screen-setup">
       <div class="meal-banner">
-        <div class="m">Dinner · 7:12pm</div>
+        <div class="m" id="mealBannerMeta">Dinner · 7:12pm</div>
         <div class="t disp">Who, how much, how far?</div>
       </div>
 
@@ -638,7 +638,35 @@ window.addEventListener('load', () => {
   buildTicks('budgetTicks', 3);
   paintSliderFill('countSlider', 3, 10, 3);
   onBudgetSlide();
+  updateMealBanner();
+  setInterval(updateMealBanner, 60000); // keep it honest if the app's left open across a meal-period boundary
 });
+
+// The setup screen's "Dinner · 7:12pm" banner used to be static placeholder
+// markup that never actually reflected the real time — this computes both
+// the current local time and a meal-period label live, matching the
+// existing "H:MMam/pm" (lowercase, no space) style used elsewhere in the UI.
+function mealPeriodFor(hour){
+  if (hour >= 5 && hour < 11) return 'Breakfast';
+  if (hour >= 11 && hour < 15) return 'Lunch';
+  if (hour >= 15 && hour < 17) return 'Tea time';
+  if (hour >= 17 && hour < 21) return 'Dinner';
+  if (hour >= 21 || hour < 1) return 'Supper';
+  return 'Late night';
+}
+function formatClock(d){
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? 'pm' : 'am';
+  h = h % 12; if (h === 0) h = 12;
+  return `${h}:${String(m).padStart(2,'0')}${ampm}`;
+}
+function updateMealBanner(){
+  const el = document.getElementById('mealBannerMeta');
+  if (!el) return;
+  const now = new Date();
+  el.textContent = `${mealPeriodFor(now.getHours())} · ${formatClock(now)}`;
+}
 
 let tT;
 function toast(msg, type='') {
