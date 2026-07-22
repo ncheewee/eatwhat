@@ -268,8 +268,6 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .area-picker-btn { background:var(--sf2); color:var(--tx); border:1px solid var(--bd2); border-radius:var(--r); padding:8px 12px; font-size:14px; font-family:inherit; display:flex; align-items:center; gap:8px; cursor:pointer }
 .area-picker-btn .car { font-size:10px; color:var(--tx3) }
 .area-sheet-title { font-family:'Fraunces',Georgia,serif; font-size:19px; font-weight:600; margin-bottom:14px }
-.area-search { width:100%; background:var(--sf2); border:1px solid var(--bd2); border-radius:var(--r); padding:11px 12px; font-size:14px; font-family:inherit; color:var(--tx); margin-bottom:8px }
-.area-search:focus { outline:none; border-color:var(--am) }
 .area-list { max-height:48vh; overflow-y:auto; -webkit-overflow-scrolling:touch }
 .area-row { display:flex; justify-content:space-between; align-items:center; padding:13px 2px; border-bottom:1px solid var(--bd); cursor:pointer; font-size:15px }
 .area-row:last-child { border-bottom:none }
@@ -576,7 +574,6 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
   <div class="modal">
     <div class="mh"></div>
     <div class="area-sheet-title">Choose an area</div>
-    <input type="text" class="area-search" id="areaSearchInput" placeholder="Search areas…" oninput="filterAreaList()">
     <div class="area-list" id="areaList"></div>
   </div>
 </div>
@@ -990,7 +987,7 @@ const DEFAULT_LOCATION = { lat: 1.2839, lng: 103.8517 }; // Raffles Place, SG �
 // relying on geolocation. Not exhaustive (Singapore has ~55 official planning
 // areas incl. industrial/park ones with little dining) — this covers the ones
 // people actually search food in.
-const SG_AREAS = [
+const SG_AREAS_RAW = [
   { name: 'Orchard', lat: 1.3048, lng: 103.8318 },
   { name: 'Downtown Core / Raffles Place', lat: 1.2839, lng: 103.8517 },
   { name: 'Marina Bay', lat: 1.2807, lng: 103.8600 },
@@ -1030,6 +1027,9 @@ const SG_AREAS = [
   { name: 'Katong / East Coast', lat: 1.3010, lng: 103.9060 },
   { name: 'Kallang', lat: 1.3115, lng: 103.8650 },
 ];
+// Alphabetised for the picker — scrolling a long list is much easier to
+// scan/predict in A-Z order than in the arbitrary order they were authored.
+const SG_AREAS = [...SG_AREAS_RAW].sort((a, b) => a.name.localeCompare(b.name));
 
 // Fallback data if the API isn't configured yet, or a call fails — keeps the mockup usable standalone
 const MOCK_POOL = [
@@ -1083,24 +1083,20 @@ function populateAreaSelect(){
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function renderAreaList(filter = ''){
+// Deliberately no search box — scroll-and-pick through the alphabetised
+// list only, per Chee Wee's "force to scroll and pick" preference (a
+// search input previously auto-focused on open, forcing the OS keyboard up
+// every time).
+function renderAreaList(){
   const list = document.getElementById('areaList');
   if (!list) return;
-  const q = filter.trim().toLowerCase();
-  const items = q ? SG_AREAS.filter(a => a.name.toLowerCase().includes(q)) : SG_AREAS;
   // Using data-area + a delegated click listener (attached once, below)
   // instead of an inline onclick with an interpolated string — the previous
   // version did onclick="pickArea(${JSON.stringify(a.name)})", which for a
   // name like "Bishan" rendered as onclick="pickArea("Bishan")": the JSON
   // string's own double quotes prematurely closed the double-quoted onclick
   // attribute, silently breaking every row's click handler.
-  list.innerHTML = items.length
-    ? items.map(a => `<div class="area-row${a.name === selectedAreaName ? ' active' : ''}" data-area="${escapeHtml(a.name)}"><span>${escapeHtml(a.name)}</span><span class="ck">✓</span></div>`).join('')
-    : '<div class="area-empty">No matching areas</div>';
-}
-
-function filterAreaList(){
-  renderAreaList(document.getElementById('areaSearchInput')?.value || '');
+  list.innerHTML = SG_AREAS.map(a => `<div class="area-row${a.name === selectedAreaName ? ' active' : ''}" data-area="${escapeHtml(a.name)}"><span>${escapeHtml(a.name)}</span><span class="ck">✓</span></div>`).join('');
 }
 
 function pickArea(name){
@@ -1115,11 +1111,8 @@ function updateAreaPickerLabel(){
 }
 
 function openAreaPicker(){
-  const input = document.getElementById('areaSearchInput');
-  if (input) input.value = '';
   renderAreaList();
   document.getElementById('areaPickerModal').classList.add('open');
-  setTimeout(() => input?.focus(), 50);
 }
 
 function closeAreaPicker(){
@@ -1506,9 +1499,27 @@ function paintPick(){
 // shortlist detail sheet shows on tap — surfaced automatically once the
 // reveal lands, so the winner doesn't need a second tap to see the full story.
 let pickDetailToken = 0;
+// The hero photo above (#pickPhoto, painted in paintPick()) already shows
+// this venue's primary photo large — Google's own photo list almost always
+// returns that same primary shot first, so rendering it *again* in the
+// mini-gallery below the name/info was showing the identical thumbnail
+// twice. This drops the first photo from that gallery (it's redundant with
+// the hero) and hides the gallery entirely when nothing else is left to show.
+function renderPickGallery(refs, item){
+  // Filter by exact match rather than blindly dropping index 0 — more
+  // robust in case photo ordering ever differs between the search result
+  // and the later place-detail fetch.
+  const rest = (refs || []).filter((r) => r !== item.photoRef);
+  const wrap = document.getElementById('pickGalleryWrap');
+  if (!rest.length){
+    if (wrap) wrap.style.display = 'none';
+    return;
+  }
+  if (wrap) wrap.style.display = '';
+  renderGallery(rest, item.emoji, item.name, { track: 'pickGalleryTrack', dots: 'pickGalleryDots' });
+}
 function loadPickDetail(item){
-  const ids = { track: 'pickGalleryTrack', dots: 'pickGalleryDots' };
-  renderGallery(item.photoRef ? [item.photoRef] : [], item.emoji, item.name, ids);
+  renderPickGallery(item.photoRef ? [item.photoRef] : [], item);
   renderInsights(null, 'pickInsights');
   const token = ++pickDetailToken;
   if (item.placeId && API_BASE && !API_BASE.includes('YOUR-WORKER-SUBDOMAIN')){
@@ -1516,7 +1527,7 @@ function loadPickDetail(item){
       .then(res => res.ok ? res.json() : null)
       .then(detail => {
         if (token !== pickDetailToken || !detail) return; // superseded by a reroll
-        if (detail.photoRefs && detail.photoRefs.length) renderGallery(detail.photoRefs, item.emoji, item.name, ids);
+        if (detail.photoRefs && detail.photoRefs.length) renderPickGallery(detail.photoRefs, item);
         renderInsights(detail, 'pickInsights');
       })
       .catch(() => { if (token === pickDetailToken) renderInsights({}, 'pickInsights'); });

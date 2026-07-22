@@ -507,6 +507,47 @@ const GEM_CACHE_TTL = 60 * 60 * 24 * 60; // 60 days — a stall's location/ratin
  * only costs a live API call once per gem, ever (until the cache expires) —
  * subsequent requests, from any user/location, hit the cache.
  */
+const GEM_OPENNOW_TTL = 60 * 10; // 10 minutes
+
+/**
+ * openNow is a live, fast-changing field — it CANNOT ride along with the
+ * 60-day gemplace identity cache above (name/address/rating/location are
+ * genuinely stable for months; open/closed status is not). A 2026-07 bug
+ * report ("Magic Kitchen shown as a pick but it's closed on Google Maps")
+ * traced back to exactly this: a gem resolved via Text Search days earlier
+ * had its whole raw Places object — openNow included — cached for 60 days,
+ * so it kept reporting whatever open/closed state it happened to have at
+ * the moment it was first resolved, forever. This does a separate,
+ * short-TTL, id-keyed lookup of just the live opening-hours field.
+ */
+async function fetchLiveOpenNow({ placeId, apiKey, env }) {
+  const cacheKey = `gemopen:${placeId}`;
+  if (env.SEARCH_CACHE) {
+    try {
+      const cached = await env.SEARCH_CACHE.get(cacheKey, "json");
+      if (cached && typeof cached.openNow !== "undefined") return cached.openNow;
+    } catch { /* fall through to live lookup */ }
+  }
+  let openNow = null;
+  try {
+    const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+      headers: { "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "currentOpeningHours.openNow" },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      openNow = data.currentOpeningHours?.openNow ?? null;
+    }
+  } catch {
+    openNow = null; // best-effort — one failed live check shouldn't fail the whole request
+  }
+  if (env.SEARCH_CACHE) {
+    try {
+      await env.SEARCH_CACHE.put(cacheKey, JSON.stringify({ openNow }), { expirationTtl: GEM_OPENNOW_TTL });
+    } catch { /* cache write failure is non-fatal */ }
+  }
+  return openNow;
+}
+
 async function resolveCuratedGems({ lat, lng, radiusKm, apiKey, env }) {
   const results = await Promise.all(
     GEMS.map(async (gem) => {
@@ -534,13 +575,23 @@ async function resolveCuratedGems({ lat, lng, radiusKm, apiKey, env }) {
     })
   );
 
-  return results
+  const resolved = results
     .filter(Boolean)
     .map((p) => normalizePlace(p, lat, lng))
     // Text Search isn't geo-scoped like Nearby Search — a name can resolve to
     // a branch anywhere in Singapore, so this radius check is load-bearing,
     // not a redundant safety net.
     .filter((v) => v.distanceKm != null && v.distanceKm <= radiusKm);
+
+  // Only refresh openNow for the handful of gems that actually survived the
+  // radius filter — not all of GEMS — to keep this cheap.
+  await Promise.all(
+    resolved.map(async (v) => {
+      if (v.id) v.openNow = await fetchLiveOpenNow({ placeId: v.id, apiKey, env });
+    })
+  );
+
+  return resolved;
 }
 
 async function fetchTransitStations({ lat, lng, radiusKm, apiKey }) {
