@@ -309,14 +309,23 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
 
   if (!ranked.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
+  // A closed venue isn't a worse suggestion for "what to eat right now" — it's
+  // a wrong one, so this is a hard ordering rule rather than the mild -3
+  // scoring penalty applied above. Open (or unknown-hours) venues fill every
+  // winning slot first; a closed venue only ever appears in the winning set
+  // if there genuinely aren't enough open venues nearby to reach `count`.
+  const openRanked = ranked.filter((v) => v._openNow !== false);
+  const closedRanked = ranked.filter((v) => v._openNow === false);
+  const ordered = openRanked.length >= count ? [...openRanked, ...closedRanked] : ranked;
+
   // Guarantee at least one hawker/kopitiam-style pick makes the winning
   // set — otherwise the raw score, even with the boost above, can still
   // lose to several very-high-review-count restaurants clustered at the
   // top. This is a deliberate editorial floor, not just a scoring nudge:
   // the category is too easily crowded out to leave to score alone.
   const guaranteeSlot = Math.min(3, count); // still slot it in early even if the user asked for more than 3
-  const poolSize = Math.min(ranked.length, count + 5); // a little padding beyond the "winners" for the reveal animation
-  let topN = ranked.slice(0, poolSize);
+  const poolSize = Math.min(ordered.length, count + 5); // a little padding beyond the "winners" for the reveal animation
+  let topN = ordered.slice(0, poolSize);
   const hasHawkerInWinners = topN.slice(0, count).some((v) => v._category === "hawker");
   if (!hasHawkerInWinners) {
     const bestHawkerIdx = topN.findIndex((v) => v._category === "hawker");
@@ -328,7 +337,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   }
 
   const winners = topN.slice(0, count);
-  const pool = topN.map(({ _score, _category, ...v }, i) => ({ ...v, win: i < count }));
+  const pool = topN.map(({ _score, _category, _openNow, ...v }, i) => ({ ...v, win: i < count }));
 
   // "Near MRT only" is now a soft preference rather than a hard filter, so
   // there's no all-or-nothing fallback to react to — just tell the user
@@ -722,6 +731,7 @@ function mergeVenue(v, hype, mich, curated, prefs, recentPlaceIds, stations, bud
     why: michWhy(mich, v) || (curated ? `Named a ${curated.area} favourite by ${curated.source}` : null) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
     _score: scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, transitOnly, nearStation),
     _category: category,
+    _openNow: v.openNow, // true/false/null — used in runPipeline to keep closed venues out of winning slots
   };
 }
 
