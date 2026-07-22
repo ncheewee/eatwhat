@@ -251,7 +251,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
     }
   }
 
-  const shortlist = venues.slice(0, 20);
+  const shortlist = venues.slice(0, 40); // rank the whole widened pool, not just the first 20
 
   // Optional: grounded "trending" tags via Gemini. Disabled by default because
   // Search grounding requires a paid/prepay Gemini project. Set ENABLE_GROUNDING="true"
@@ -309,31 +309,33 @@ const PRICE_MAP = {
   "$$$": "PRICE_LEVEL_EXPENSIVE",
 };
 
-async function fetchNearbyPlaces({ lat, lng, radiusKm, apiKey }) {
+const PLACES_FIELD_MASK = [
+  "places.id",
+  "places.displayName",
+  "places.rating",
+  "places.userRatingCount",
+  "places.priceLevel",
+  "places.location",
+  "places.currentOpeningHours.openNow",
+  "places.primaryType",
+  "places.primaryTypeDisplayName",
+  "places.types",
+  "places.photos",
+  "places.formattedAddress",
+].join(",");
+
+async function searchNearbyRaw({ lat, lng, radiusKm, apiKey, includedTypes, rankPreference }) {
   const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": [
-        "places.id",
-        "places.displayName",
-        "places.rating",
-        "places.userRatingCount",
-        "places.priceLevel",
-        "places.location",
-        "places.currentOpeningHours.openNow",
-        "places.primaryType",
-        "places.primaryTypeDisplayName",
-        "places.types",
-        "places.photos",
-        "places.formattedAddress",
-      ].join(","),
+      "X-Goog-FieldMask": PLACES_FIELD_MASK,
     },
     body: JSON.stringify({
-      includedTypes: ["restaurant"],
+      includedTypes,
       maxResultCount: 20,
-      rankPreference: "POPULARITY",
+      rankPreference,
       locationRestriction: {
         circle: { center: { latitude: lat, longitude: lng }, radius: Math.min(radiusKm * 1000, 50000) },
       },
@@ -342,7 +344,29 @@ async function fetchNearbyPlaces({ lat, lng, radiusKm, apiKey }) {
 
   if (!res.ok) throw new Error(`Places API error ${res.status}: ${await res.text()}`);
   const data = await res.json();
-  const places = data.places || [];
+  return data.places || [];
+}
+
+async function fetchNearbyPlaces({ lat, lng, radiusKm, apiKey }) {
+  // A single Nearby Search call is capped at 20 raw results by Google — too
+  // thin a pool for hawker stalls and other lower-review-volume gems to have
+  // a fair shot once scoring/filtering runs, since they tend to rank low on
+  // "POPULARITY" alone even when they're genuinely excellent. Running two
+  // queries in parallel with different type sets and rank preferences, then
+  // merging and deduping by place id, gives the pipeline a meaningfully
+  // bigger and more varied raw pool (roughly 2-3x a single call) before any
+  // of our own filtering starts — instead of that filtering having to work
+  // with an already-thin, popularity-skewed list.
+  const [byPopularity, byDistance] = await Promise.all([
+    searchNearbyRaw({ lat, lng, radiusKm, apiKey, includedTypes: ["restaurant"], rankPreference: "POPULARITY" }),
+    searchNearbyRaw({ lat, lng, radiusKm, apiKey, includedTypes: ["restaurant", "food_court", "meal_takeaway"], rankPreference: "DISTANCE" }),
+  ]);
+
+  const byId = new Map();
+  for (const p of [...byPopularity, ...byDistance]) {
+    if (p.id && !byId.has(p.id)) byId.set(p.id, p);
+  }
+  const places = [...byId.values()];
 
   const EXCLUDED_TYPES = /lodging|hotel|resort|shopping_mall|tourist_attraction|casino/i;
 
