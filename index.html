@@ -1077,13 +1077,24 @@ function populateAreaSelect(){
   renderAreaList();
 }
 
+// escapeHtml so a stray " or < in an area name (shouldn't happen with our
+// own SG_AREAS list, but defensive anyway) can never break the markup.
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 function renderAreaList(filter = ''){
   const list = document.getElementById('areaList');
   if (!list) return;
   const q = filter.trim().toLowerCase();
   const items = q ? SG_AREAS.filter(a => a.name.toLowerCase().includes(q)) : SG_AREAS;
+  // Using data-area + a delegated click listener (attached once, below)
+  // instead of an inline onclick with an interpolated string — the previous
+  // version did onclick="pickArea(${JSON.stringify(a.name)})", which for a
+  // name like "Bishan" rendered as onclick="pickArea("Bishan")": the JSON
+  // string's own double quotes prematurely closed the double-quoted onclick
+  // attribute, silently breaking every row's click handler.
   list.innerHTML = items.length
-    ? items.map(a => `<div class="area-row${a.name === selectedAreaName ? ' active' : ''}" onclick="pickArea(${JSON.stringify(a.name)})"><span>${a.name}</span><span class="ck">✓</span></div>`).join('')
+    ? items.map(a => `<div class="area-row${a.name === selectedAreaName ? ' active' : ''}" data-area="${escapeHtml(a.name)}"><span>${escapeHtml(a.name)}</span><span class="ck">✓</span></div>`).join('')
     : '<div class="area-empty">No matching areas</div>';
 }
 
@@ -1113,6 +1124,13 @@ function openAreaPicker(){
 function closeAreaPicker(){
   document.getElementById('areaPickerModal').classList.remove('open');
 }
+
+// Delegated once (not re-attached on every renderAreaList() call) so
+// repeated re-renders (search filtering, etc.) never risk double-binding.
+document.getElementById('areaList')?.addEventListener('click', (e) => {
+  const row = e.target.closest('.area-row');
+  if (row && row.dataset.area) pickArea(row.dataset.area);
+});
 
 function getSetupValues(){
   const budget = budgetValue();
