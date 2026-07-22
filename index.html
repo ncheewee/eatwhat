@@ -131,6 +131,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .dot-reviews { background:var(--tx2) }
 .dot-michelin { background:var(--am) }
 .dot-trend { background:var(--rd) }
+.dot-curated { background:var(--gn) }
 
 .finalists { display:none; flex-direction:column; gap:2px; width:100% }
 .finalists.show { display:flex }
@@ -1248,6 +1249,13 @@ async function startShuffle(){
   runLine('Layering the MICHELIN Guide');
   for (const item of bySource('michelin')){ addToken(item); await sleep(160); if (searchDone) return; }
   await sleep(300); if (searchDone) return;
+
+  const curatedPicks = bySource('curated');
+  if (curatedPicks.length){
+    runLine('Checking food creators & bloggers you trust');
+    for (const item of curatedPicks){ addToken(item); await sleep(160); if (searchDone) return; }
+    await sleep(300); if (searchDone) return;
+  }
 
   const trending = bySource('trend');
   if (trending.length){
