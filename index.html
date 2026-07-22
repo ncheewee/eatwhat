@@ -1285,11 +1285,17 @@ function playPickReveal(isReroll){
     return el;
   });
 
+  let settled = false;
+  function finish(){
+    if (settled || token !== pickSpinToken) return; // idempotent — only the first caller (rAF or the fallback timer) does anything
+    settled = true;
+    if (orbitRAF) cancelAnimationFrame(orbitRAF);
+    settlePick(token);
+  }
+
   const startedAt = performance.now();
   function tick(now){
     if (token !== pickSpinToken) return; // superseded by another reroll/reveal
-    // requestAnimationFrame pauses in a backgrounded tab, so a big elapsed
-    // jump on return just completes the spin immediately rather than hanging.
     const p = Math.min(1, (now - startedAt) / spinMs);
     const eased = 1 - Math.pow(1 - p, 3); // ease-out — fast then decelerating
     const globalAngle = 1080 * eased; // three full turns, always a multiple of 360 at p=1
@@ -1311,10 +1317,17 @@ function playPickReveal(isReroll){
     if (p < 1){
       orbitRAF = requestAnimationFrame(tick);
     } else {
-      settlePick(token);
+      finish();
     }
   }
   orbitRAF = requestAnimationFrame(tick);
+
+  // Wall-clock safety net: requestAnimationFrame doesn't just throttle in a
+  // backgrounded/hidden tab, it can pause entirely — so relying on it alone
+  // could leave the reveal stuck on "Choosing…" indefinitely if the app gets
+  // backgrounded mid-spin. setTimeout still fires (if a bit delayed) in that
+  // case, so this guarantees the reveal always actually completes.
+  setTimeout(finish, spinMs + 500);
 }
 
 function settlePick(token){
