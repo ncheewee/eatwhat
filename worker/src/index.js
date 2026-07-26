@@ -41,6 +41,10 @@ export default {
       return handlePlaceDetail(url, env);
     }
 
+    if (url.pathname === "/api/gemini-check" && request.method === "GET") {
+      return handleGeminiCheck(env);
+    }
+
     if (url.pathname !== "/api/search" || request.method !== "POST") {
       return json({ error: "Not found. POST /api/search" }, 404);
     }
@@ -155,6 +159,29 @@ async function handlePhoto(url, env) {
   });
 }
 
+// Manual diagnostic — GET /api/gemini-check — makes one minimal live call to
+// confirm the Gemini API key/project is actually working right now (quota,
+// billing, deprecated model, etc. all show up as a real HTTP status + body
+// here rather than silently swallowed like the best-effort fetchHypeTags
+// call above is during normal search requests). Never exposes the key itself.
+async function handleGeminiCheck(env) {
+  if (!env.GEMINI_API_KEY) return json({ ok: false, reason: "GEMINI_API_KEY not set on this Worker" });
+  try {
+    const res = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + env.GEMINI_API_KEY,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: "Reply with exactly one word: OK" }] }] }),
+      }
+    );
+    const bodyText = await res.text();
+    return json({ ok: res.ok, httpStatus: res.status, enableGroundingFlag: env.ENABLE_GROUNDING === "true", responseBody: bodyText.slice(0, 800) });
+  } catch (err) {
+    return json({ ok: false, error: String(err) });
+  }
+}
+
 // Lazy, on-demand detail fetch — only called when the user actually taps into
 // a listing, so we don't pay for these richer (pricier) fields on all ~8
 // candidates every search, only the 1-3 someone actually opens.
@@ -243,7 +270,27 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   // (safety net for any edge-case naming collision), so the individual stalls
   // Places already lists separately (which do match the Bib Gourmand/Selected
   // list via lookupMichelin below) still come through untouched.
+  //
+  // Two known gaps fixed here (2026-07-26 bug report — "still getting entire
+  // food courts listed as a spot"):
+  //  1. This end-anchored pattern missed branded food-court chains whose
+  //     name doesn't literally end in one of these words, e.g. "Kopitiam @
+  //     Bugis Junction" or "Food Republic @ VivoCity" — the "@ Location"
+  //     suffix meant \s*$ never matched. isGenericVenueName() below also
+  //     checks FOODCOURT_HINTS (the same brand list already used to *tag*
+  //     individual food-court stalls) against the venue's own name, which
+  //     catches these without misfiring on a stall's own name (a real stall
+  //     is very unlikely to have "food republic"/"koufu"/"kopitiam" etc. as
+  //     part of its own business name).
+  //  2. This filter was only ever applied to fetchNearbyPlaces() results —
+  //     resolveCuratedGems() venues (Text Search resolutions of curated
+  //     picks) were appended to `shortlist` AFTER this filter ran, so a
+  //     curated name that Text Search resolved to an entire food centre
+  //     (because the specific stall isn't independently listed in Places)
+  //     sailed straight through untouched. isGenericVenueName() is now also
+  //     applied to gemVenues below, not just the nearby-search pool.
   const GENERIC_HAWKER = /\b(food centre|food center|market|food court|hawker centre|hawker center|hawker complex|kopitiam|complex)\s*$/i;
+  const isGenericVenueName = (name) => GENERIC_HAWKER.test(name) || FOODCOURT_HINTS.test(name);
 
   // Budget and "near MRT only" used to be hard filters at the fetch stage —
   // which is exactly what could leave someone with a shortlist of one when
@@ -255,7 +302,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   // picks, they get `count` — the "greatness bar" flexes before the list
   // comes up short, not the geography.
   let venues = await fetchNearbyPlaces({ lat, lng, radiusKm, apiKey: env.GOOGLE_PLACES_API_KEY });
-  venues = venues.filter((v) => !GENERIC_HAWKER.test(v.name) || lookupMichelin(v.name, michelin));
+  venues = venues.filter((v) => !isGenericVenueName(v.name) || lookupMichelin(v.name, michelin));
 
   if (!venues.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
@@ -281,7 +328,10 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
     const gemVenues = await resolveCuratedGems({ lat, lng, radiusKm, apiKey: env.GOOGLE_PLACES_API_KEY, env });
     const seenIds = new Set(shortlist.map((v) => v.id));
     for (const gv of gemVenues) {
-      if (gv.id && !seenIds.has(gv.id)) {
+      // A curated name that Text Search resolved to an entire food centre
+      // (rather than the specific stall) is exactly as unsuggestable as one
+      // that came through Nearby Search — same filter, not skipped this time.
+      if (gv.id && !seenIds.has(gv.id) && (!isGenericVenueName(gv.name) || lookupMichelin(gv.name, michelin))) {
         shortlist.push(gv);
         seenIds.add(gv.id);
       }
