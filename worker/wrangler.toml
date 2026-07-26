@@ -2,6 +2,12 @@ name = "eatwhat-api"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 
+# Plain config flags (NOT secrets — safe to commit). Grounding sends the
+# candidate list to Gemini with the google_search tool to tag venues as
+# trending / recently-reviewed. Costs an extra API call per uncached search.
+[vars]
+ENABLE_GROUNDING = "true"
+
 # After creating the KV namespace with:
 #   npx wrangler kv namespace create SEARCH_CACHE
 # paste the returned "id" below.
