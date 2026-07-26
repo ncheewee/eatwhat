@@ -5,8 +5,19 @@ compatibility_date = "2025-01-01"
 # Plain config flags (NOT secrets — safe to commit). Grounding sends the
 # candidate list to Gemini with the google_search tool to tag venues as
 # trending / recently-reviewed. Costs an extra API call per uncached search.
+#
+# OFF as of 2026-07-26. The GEMINI_API_KEY is valid and plain generateContent
+# calls succeed (see GET /api/gemini-check), but grounded calls — the ones
+# that pass tools:[{google_search:{}}] — return 429 "exceeded your current
+# quota": Search grounding carries its own separate, far stricter free-tier
+# allowance than plain generation. Leaving this on just adds a guaranteed-to-
+# fail API call to every uncached search. Flip to "true" only after adding
+# billing to the AI Studio project, then re-test with:
+#   curl -s -X POST .../api/search -d '{"lat":1.3691,"lng":103.8454,
+#     "radiusKm":<novel value to dodge the 12h KV cache>,"debug":true}'
+#   → check the debugGrounding field.
 [vars]
-ENABLE_GROUNDING = "true"
+ENABLE_GROUNDING = "false"
 
 # After creating the KV namespace with:
 #   npx wrangler kv namespace create SEARCH_CACHE
