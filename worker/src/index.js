@@ -18,6 +18,14 @@ import { buildMichelinIndex, lookupMichelin } from "./michelin.js";
 import { buildCuratedIndex, lookupCurated, GEMS, weightForSource } from "./curated-gems.js";
 import { matchesKnownHawkerCentre } from "./hawker-centres.js";
 
+// Tolerant truthiness for config flags. A value piped in via
+// `wrangler secret put` can arrive with a trailing newline, and a
+// same-named secret shadows a wrangler.toml [vars] entry — both of which
+// silently broke a strict `=== "true"` comparison.
+function flagOn(v) {
+  return String(v ?? "").trim().toLowerCase() === "true";
+}
+
 const CACHE_TTL_SECONDS = 60 * 60 * 12; // 12h — Michelin/trending data doesn't move fast
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -176,7 +184,7 @@ async function handleGeminiCheck(env) {
       }
     );
     const bodyText = await res.text();
-    return json({ ok: res.ok, httpStatus: res.status, enableGroundingFlag: env.ENABLE_GROUNDING === "true", responseBody: bodyText.slice(0, 800) });
+    return json({ ok: res.ok, httpStatus: res.status, enableGroundingFlag: flagOn(env.ENABLE_GROUNDING), rawGroundingValue: JSON.stringify(env.ENABLE_GROUNDING ?? null), responseBody: bodyText.slice(0, 800) });
   } catch (err) {
     return json({ ok: false, error: String(err) });
   }
@@ -344,7 +352,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   // Search grounding requires a paid/prepay Gemini project. Set ENABLE_GROUNDING="true"
   // once billing is in place to switch it on.
   let hypeTags = {};
-  if (env.ENABLE_GROUNDING === "true" && env.GEMINI_API_KEY) {
+  if (flagOn(env.ENABLE_GROUNDING) && env.GEMINI_API_KEY) {
     try {
       hypeTags = await fetchHypeTags({ venues: shortlist.slice(0, 15), apiKey: env.GEMINI_API_KEY });
     } catch {
