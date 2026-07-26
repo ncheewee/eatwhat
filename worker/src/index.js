@@ -352,10 +352,15 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   // Search grounding requires a paid/prepay Gemini project. Set ENABLE_GROUNDING="true"
   // once billing is in place to switch it on.
   let hypeTags = {};
+  let groundingDiag = flagOn(env.ENABLE_GROUNDING)
+    ? (env.GEMINI_API_KEY ? "attempted" : "skipped: no GEMINI_API_KEY")
+    : "skipped: ENABLE_GROUNDING not true";
   if (flagOn(env.ENABLE_GROUNDING) && env.GEMINI_API_KEY) {
     try {
       hypeTags = await fetchHypeTags({ venues: shortlist.slice(0, 15), apiKey: env.GEMINI_API_KEY });
-    } catch {
+      groundingDiag = `ok: ${Object.keys(hypeTags).length} tagged`;
+    } catch (err) {
+      groundingDiag = `error: ${String(err).slice(0, 300)}`;
       hypeTags = {}; // best-effort — never fail the request over this
     }
   }
@@ -409,6 +414,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
       tags: v.tags, won: i < winners.length,
     }));
     out.debugRawFetchCount = shortlist.length; // includes resolved curated gems, post-merge
+    out.debugGrounding = groundingDiag;
   }
   return out;
 }
