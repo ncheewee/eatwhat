@@ -96,12 +96,6 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .ew-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:28px; height:28px; border-radius:50%; background:var(--am); border:2px solid var(--bg); box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer }
 .ew-slider::-moz-range-thumb { width:28px; height:28px; border-radius:50%; background:var(--am); border:2px solid var(--bg); box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer }
 .ew-slider::-moz-range-track { height:4px; border-radius:2px; background:transparent }
-.dual-slider { position:relative; height:28px; display:flex; align-items:center }
-.dual-slider .ew-slider { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); background:none; pointer-events:none; z-index:2 }
-.dual-slider .ew-slider::-webkit-slider-thumb { pointer-events:auto }
-.dual-slider .ew-slider::-moz-range-thumb { pointer-events:auto }
-.ds-track { position:absolute; left:0; right:0; height:4px; border-radius:2px; background:var(--bd2); top:50%; transform:translateY(-50%); z-index:0 }
-.ds-fill { position:absolute; height:4px; border-radius:2px; background:var(--am); top:50%; transform:translateY(-50%); z-index:1 }
 .tick-row { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); display:flex; justify-content:space-between; pointer-events:none; z-index:0 }
 .tick-row .tick { width:5px; height:5px; border-radius:50%; background:var(--bd2) }
 #peopleVal { font-family:'Fraunces'; font-weight:600; font-size:17px; min-width:14px; text-align:center }
@@ -378,19 +372,12 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
             </div>
           </div>
         </div>
-        <div class="setup-row" style="flex-direction:column;align-items:stretch;gap:8px">
-          <div style="display:flex;justify-content:space-between;width:100%">
-            <div class="setup-label">Budget</div>
-            <div id="budgetVal" style="color:var(--am);font-weight:600">$$</div>
-          </div>
-          <div class="slider-pad">
-            <div class="dual-slider">
-              <div class="ds-track"></div>
-              <div class="tick-row" id="budgetTicks"></div>
-              <div class="ds-fill" id="budgetFill"></div>
-              <input type="range" id="budgetMin" class="ew-slider" min="1" max="3" step="1" value="2" oninput="onBudgetSlide()">
-              <input type="range" id="budgetMax" class="ew-slider" min="1" max="3" step="1" value="2" oninput="onBudgetSlide()">
-            </div>
+        <div class="setup-row">
+          <div class="setup-label">Budget</div>
+          <div class="pill-select" id="budgetPills">
+            <span class="chip active" data-v="$" onclick="selectBudget(this)">$</span>
+            <span class="chip" data-v="$$" onclick="selectBudget(this)">$$</span>
+            <span class="chip" data-v="$$$" onclick="selectBudget(this)">$$$</span>
           </div>
         </div>
         <div class="setup-row">
@@ -656,9 +643,7 @@ window.addEventListener('load', () => {
   setTimeout(() => { if (!document.getElementById('loginGate').classList.contains('hidden')) document.getElementById('loginSkip').style.display = ''; }, 4000);
   populateAreaSelect();
   buildTicks('countTicks', 8);
-  buildTicks('budgetTicks', 3);
   paintSliderFill('countSlider', 3, 10, 3);
-  onBudgetSlide();
   updateMealBanner();
   setInterval(updateMealBanner, 60000); // keep it honest if the app's left open across a meal-period boundary
 });
@@ -725,25 +710,24 @@ function onCountSlide(v){
 }
 
 // ---- Taste preferences (drives curation on the backend) ----
-const BUDGET_LABELS = { 1: '$', 2: '$$', 3: '$$$' };
-function onBudgetSlide(){
-  const minEl = document.getElementById('budgetMin');
-  const maxEl = document.getElementById('budgetMax');
-  let lo = Number(minEl.value), hi = Number(maxEl.value);
-  if (lo > hi){ [lo, hi] = [hi, lo]; minEl.value = lo; maxEl.value = hi; }
-  document.getElementById('budgetVal').textContent = (lo === 1 && hi === 3) ? 'Any' : (lo === hi ? BUDGET_LABELS[lo] : `${BUDGET_LABELS[lo]}–${BUDGET_LABELS[hi]}`);
-  const pctLo = ((lo - 1) / 2) * 100, pctHi = ((hi - 1) / 2) * 100;
-  const fill = document.getElementById('budgetFill');
-  fill.style.left = pctLo + '%';
-  fill.style.width = (pctHi - pctLo) + '%';
+// Budget is a multi-select chip row (back from the dual-range slider — the
+// slider implied a continuous range over what is really three discrete
+// tiers, and was fiddly to grab). Defaults to $ alone.
+function selectBudget(el){
+  const group = el.parentElement;
+  el.classList.toggle('active');
+  // Never allow an empty selection — the last active chip can't be turned
+  // off, otherwise "budget" would silently mean nothing.
+  if (![...group.querySelectorAll('.chip')].some(c => c.classList.contains('active'))){
+    el.classList.add('active');
+  }
 }
 function budgetValue(){
-  const lo = Number(document.getElementById('budgetMin')?.value || 1);
-  const hi = Number(document.getElementById('budgetMax')?.value || 3);
-  if (lo === 1 && hi === 3) return 'any';
-  const out = [];
-  for (let i = lo; i <= hi; i++) out.push(BUDGET_LABELS[i]);
-  return out;
+  const active = [...document.querySelectorAll('#budgetPills .chip.active')].map(c => c.dataset.v);
+  // All three selected is equivalent to no constraint at all — send "any"
+  // so the backend skips budget scoring entirely rather than nudging on it.
+  if (!active.length || active.length === 3) return 'any';
+  return active;
 }
 function budgetLabel(){
   const b = budgetValue();
