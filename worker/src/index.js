@@ -367,18 +367,19 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
     }
   }
 
-  const merged = shortlist.map((v) =>
+  // A shuttered stall is not a low-scoring suggestion, it is a wrong one, so it
+  // leaves the candidate pool outright rather than being penalised. Curated
+  // gems make this load-bearing: a human-curated name carries enough score to
+  // out-earn any penalty, which is how OK Chicken Rice & Humfull Laksa (closed
+  // permanently, two Eatbook entries pointing at one venue) held an Ang Mo Kio
+  // slot. This filters `shortlist`, not `merged`, because mergeVenue rebuilds
+  // each venue from a fixed field list and drops _businessStatus on the way.
+  // Places omits the field on some records, so only an explicit CLOSED_* counts.
+  const operational = shortlist.filter((v) => !String(v._businessStatus || "").startsWith("CLOSED"));
+  const merged = (operational.length ? operational : shortlist).map((v) =>
     mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), lookupCurated(v.name, curatedGems), prefs, recentPlaceIds, stations, budget, transitOnly)
   );
-  // A shuttered stall is not a low-scoring suggestion, it is a wrong one, so
-  // this drops it from the candidate pool outright rather than penalising it.
-  // Curated gems make this load-bearing: a human-curated name carries enough
-  // score to out-earn any penalty, which is how permanently-closed Eatbook
-  // picks (OK Chicken Rice, Humfull Laksa) kept winning slots in Ang Mo Kio.
-  // Places omits businessStatus on some records, so only an explicit CLOSED_*
-  // is treated as closed — an absent field stays in the pool.
-  const operational = merged.filter((v) => !String(v._businessStatus || "").startsWith("CLOSED"));
-  const ranked = rankVenues(operational.length ? operational : merged);
+  const ranked = rankVenues(merged);
 
   if (!ranked.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
@@ -857,6 +858,7 @@ function mergeVenue(v, hype, mich, curated, prefs, recentPlaceIds, stations, bud
     source,
     tags,
     meta: metaParts.join(" · "),
+    _businessStatus: v._businessStatus || null, // carried through the rebuild for debugPool
     why: michWhy(mich, v) || (curated ? `Named a ${curated.area} favourite by ${curated.source}` : null) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
     _score: scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, transitOnly, nearStation),
     _category: category,
