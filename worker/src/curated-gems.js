@@ -41,13 +41,11 @@ export const GEMS = [
   // --- Bishan (Eatbook "Bishan Food Guide" 2024 + 2017 "Under $15") ---
   { name: "Shi Xiang Ge", area: "Bishan", source: "Eatbook" },
   { name: "Jiak Mee", area: "Bishan", source: "Eatbook" },
-  { name: "Uncle Penyet", area: "Bishan", source: "Eatbook" },
   { name: "Ming Kee Chicken Rice", area: "Bishan", source: "Eatbook" },
   { name: "284 Kway Chap", area: "Bishan", source: "Eatbook" },
   { name: "Wei Ji Congee", area: "Bishan", source: "Eatbook" },
   { name: "Mr Egg Fried Rice", area: "Bishan", source: "Eatbook" },
   { name: "Yang Ming Seafood", area: "Bishan", source: "Eatbook" },
-  { name: "Yung Yung", area: "Bishan", source: "Eatbook" },
   { name: "Galangal", area: "Bishan", source: "Eatbook" },
   { name: "Ding Ji Mushroom Minced Meat Noodles", area: "Bishan", source: "Eatbook" },
   { name: "吃Western", area: "Bishan", source: "Eatbook" },
@@ -55,18 +53,21 @@ export const GEMS = [
   { name: "Jai Thai", area: "Bishan", source: "Eatbook" },
   { name: "Grin Affair", area: "Bishan", source: "Eatbook" },
   { name: "Two Chefs Eating Place", area: "Bishan", source: "Eatbook" },
-  { name: "Soul Kitchen", area: "Bishan", source: "Eatbook" },
-  { name: "Rong Cheng Bak Kut Teh", area: "Bishan", source: "Eatbook" },
   { name: "Crusty Oven", area: "Bishan", source: "Eatbook" },
 
   // --- Ang Mo Kio (Eatbook "24 Ang Mo Kio Food Gems" 2024) ---
   { name: "Dim Sum Express", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Shanghai Renjia", area: "Ang Mo Kio", source: "Eatbook" },
-  { name: "Fish & Chicks", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Phuket Town Mookata", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "SteakGrill", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Rahim Muslim Food", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Abang Gemuk", area: "Ang Mo Kio", source: "Eatbook" },
+  // Pruned Jul 2026 via GET /api/gem-health, all CLOSED_PERMANENTLY:
+  //   Uncle Penyet, Yung Yung, Soul Kitchen, Rong Cheng Bak Kut Teh (Bishan)
+  //   Fish & Chicks, Soi 19 Thai Wanton Mee, Wonders Cafe (Ang Mo Kio)
+  //   Dickson Nasi Lemak (Joo Chiat)
+  // Re-run gem-health before adding anything back from an older blog listing.
+  //
   // Removed Jul 2026: "OK Chicken Rice" and "Humfull Laksa" were two entries
   // pointing at one venue (721 Ang Mo Kio Ave 8), and it is CLOSED_PERMANENTLY.
   // The pipeline now filters on businessStatus regardless — dropping them here
@@ -81,10 +82,8 @@ export const GEMS = [
   { name: "Avocadoria", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Teng Sheng Korean BBQ Buffet", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Hong Heng Beef Noodle Soup", area: "Ang Mo Kio", source: "Eatbook" },
-  { name: "Soi 19 Thai Wanton Mee", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "BCD Tofu", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "No Horse Run Cafe", area: "Ang Mo Kio", source: "Eatbook" },
-  { name: "Wonders Cafe", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "F.I.C.", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Lao San Kway Chap", area: "Ang Mo Kio", source: "Eatbook" },
 
@@ -114,7 +113,6 @@ export const GEMS = [
   { name: "Joo Siah Bak Kut Teh", area: "Jurong East", source: "GetFed" },
   { name: "88 Hong Kong Roast Meat Specialist", area: "Lavender", source: "GetFed" },
   { name: "Yong Chun Wan Ton Noodle", area: "Bukit Merah", source: "GetFed" },
-  { name: "Dickson Nasi Lemak", area: "Joo Chiat", source: "GetFed" },
   { name: "Petit Pain", area: "Joo Chiat", source: "GetFed" },
 
   // --- Alderic (@aldericc, Instagram/TikTok/YouTube) ---
