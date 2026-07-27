@@ -204,7 +204,7 @@ async function handlePlaceDetail(url, env) {
     return json({ error: "GOOGLE_PLACES_API_KEY not set" }, 500);
   }
 
-  const cacheKey = `detail:${id}`;
+  const cacheKey = `detail2:${id}`;
   if (env.SEARCH_CACHE) {
     const cached = await env.SEARCH_CACHE.get(cacheKey, "json");
     if (cached) return json({ ...cached, cached: true });
@@ -421,7 +421,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   if (debug) {
     out.debugPool = ranked.map((v, i) => ({
       name: v.name, score: Math.round(v._score * 10) / 10, category: v._category,
-      tags: v.tags, won: i < winners.length,
+      tags: v.tags, won: i < winners.length, businessStatus: v._businessStatus || null,
     }));
     out.debugRawFetchCount = shortlist.length; // includes resolved curated gems, post-merge
     out.debugGrounding = groundingDiag;
