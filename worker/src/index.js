@@ -49,6 +49,10 @@ export default {
       return handlePlaceDetail(url, env);
     }
 
+    if (url.pathname === "/api/gem-health" && request.method === "GET") {
+      return handleGemHealth(url, env);
+    }
+
     if (url.pathname === "/api/gemini-check" && request.method === "GET") {
       return handleGeminiCheck(env);
     }
@@ -78,6 +82,12 @@ export default {
     // Recently accepted placeIds (most recent first), sent by the client from its
     // own history so "explore vs repeat" can bias ranking without a server-side DB.
     const recentPlaceIds = Array.isArray(body.recentPlaceIds) ? body.recentPlaceIds.slice(0, 15) : [];
+    // Explicit thumbs from the feedback prompt. A thumbs-down is a hard "never
+    // show me this again" — the user has eaten there and said no, which is
+    // better evidence than anything the ranking can infer, so it excludes
+    // rather than penalises. A thumbs-up is a nudge, not a pin.
+    const likedPlaceIds = Array.isArray(body.likedPlaceIds) ? body.likedPlaceIds.slice(0, 50) : [];
+    const dislikedPlaceIds = Array.isArray(body.dislikedPlaceIds) ? body.dislikedPlaceIds.slice(0, 50) : [];
     // "Convenient for public transport" — hard filter to spots within ~5 min walk
     // (~400m) of an MRT/LRT station, using Google's own live transit-station data
     // rather than a hand-maintained station list (which would go stale as new
@@ -104,7 +114,7 @@ export default {
     // Skip the cache entirely once novelty/recency personalization is in play —
     // the ranking depends on this specific user's recent history, so a shared
     // cache entry would leak one person's ranking to another.
-    const canCache = env.SEARCH_CACHE && recentPlaceIds.length === 0 && !debug;
+    const canCache = env.SEARCH_CACHE && recentPlaceIds.length === 0 && likedPlaceIds.length === 0 && dislikedPlaceIds.length === 0 && !debug;
 
     if (canCache) {
       const cached = await env.SEARCH_CACHE.get(cacheKey, "json");
@@ -115,7 +125,7 @@ export default {
 
     let result;
     try {
-      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, count, env, debug });
+      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, likedPlaceIds, dislikedPlaceIds, transitOnly, count, env, debug });
     } catch (err) {
       result = { pool: MOCK_POOL, mock: true, error: String(err) };
     }
@@ -164,6 +174,73 @@ async function handlePhoto(url, env) {
       "Cache-Control": "public, max-age=604800", // 7 days — photos rarely change
       ...CORS_HEADERS,
     },
+  });
+}
+
+/**
+ * GET /api/gem-health?offset=0&limit=15
+ *
+ * Health check over curated-gems.js: resolves each gem and reports its live
+ * businessStatus, so closed entries can be pruned instead of sitting in the
+ * list until someone notices by eye (which is how OK Chicken Rice & Humfull
+ * Laksa survived — closed permanently, still winning an Ang Mo Kio slot).
+ *
+ * Paginated deliberately. Each gem costs up to two subrequests (identity +
+ * live status) and Workers caps subrequests per request, so walking the list
+ * in small pages is the only way this stays inside the budget.
+ */
+async function handleGemHealth(url, env) {
+  const apiKey = env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) return json({ error: "GOOGLE_PLACES_API_KEY not set" }, 500);
+
+  const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+  const limit = Math.max(1, Math.min(20, Number(url.searchParams.get("limit")) || 15));
+  const slice = GEMS.slice(offset, offset + limit);
+
+  const gems = await Promise.all(
+    slice.map(async (gem) => {
+      const cacheKey = `gemplace2:${gem.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      let raw = null;
+      if (env.SEARCH_CACHE) {
+        try { raw = await env.SEARCH_CACHE.get(cacheKey, "json"); } catch { /* fall through */ }
+      }
+      if (!raw) {
+        try {
+          const [hit] = await searchTextRaw({ query: `${gem.name} ${gem.area} Singapore`, apiKey });
+          raw = hit || null;
+        } catch { raw = null; }
+      }
+      if (!raw?.id) return { name: gem.name, area: gem.area, source: gem.source, placeId: null, status: "UNRESOLVED" };
+
+      // The cached identity can be up to 60 days old, so status is re-checked
+      // live rather than trusted from the snapshot.
+      let status = null;
+      try {
+        const res = await fetch(`https://places.googleapis.com/v1/places/${raw.id}`, {
+          headers: { "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "businessStatus,displayName" },
+        });
+        if (res.ok) {
+          const d = await res.json();
+          status = d.businessStatus || "UNKNOWN";
+          return { name: gem.name, area: gem.area, source: gem.source, placeId: raw.id, resolvedTo: d.displayName?.text || null, status };
+        }
+        status = `HTTP_${res.status}`;
+      } catch (err) {
+        status = "LOOKUP_FAILED";
+      }
+      return { name: gem.name, area: gem.area, source: gem.source, placeId: raw.id, status };
+    })
+  );
+
+  const problems = gems.filter((g) => g.status !== "OPERATIONAL");
+  return json({
+    total: GEMS.length,
+    offset,
+    limit,
+    nextOffset: offset + limit < GEMS.length ? offset + limit : null,
+    problemCount: problems.length,
+    problems,
+    gems,
   });
 }
 
@@ -248,7 +325,7 @@ async function handlePlaceDetail(url, env) {
   return json(result);
 }
 
-async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, transitOnly, count, env, debug }) {
+async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, likedPlaceIds = [], dislikedPlaceIds = [], transitOnly, count, env, debug }) {
   if (!env.GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
   // MICHELIN tagging — curated list, no API call, no cost, no hallucination.
@@ -375,9 +452,11 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   // slot. This filters `shortlist`, not `merged`, because mergeVenue rebuilds
   // each venue from a fixed field list and drops _businessStatus on the way.
   // Places omits the field on some records, so only an explicit CLOSED_* counts.
-  const operational = shortlist.filter((v) => !String(v._businessStatus || "").startsWith("CLOSED"));
+  const operational = shortlist.filter(
+    (v) => !String(v._businessStatus || "").startsWith("CLOSED") && !(v.id && dislikedPlaceIds.includes(v.id))
+  );
   const merged = (operational.length ? operational : shortlist).map((v) =>
-    mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), lookupCurated(v.name, curatedGems), prefs, recentPlaceIds, stations, budget, transitOnly)
+    mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), lookupCurated(v.name, curatedGems), prefs, recentPlaceIds, likedPlaceIds, stations, budget, transitOnly)
   );
   const ranked = rankVenues(merged);
 
@@ -817,7 +896,7 @@ function classifyVenue(v, mich, curated) {
   return "restaurant";
 }
 
-function mergeVenue(v, hype, mich, curated, prefs, recentPlaceIds, stations, budget, transitOnly) {
+function mergeVenue(v, hype, mich, curated, prefs, recentPlaceIds, likedPlaceIds, stations, budget, transitOnly) {
   const tags = [];
   let source = "reviews";
   const nearStation = !!(stations && stations.length && nearestStationKm(v, stations) <= 0.45);
@@ -847,7 +926,9 @@ function mergeVenue(v, hype, mich, curated, prefs, recentPlaceIds, stations, bud
   if (v.openNow != null) metaParts.push(v.openNow ? "Open now" : "Closed now");
 
   const isRecent = recentPlaceIds && v.id && recentPlaceIds.includes(v.id);
-  if (prefs?.novelty === "repeat" && isRecent) tags.push("A favorite of yours");
+  const isLiked = !!(likedPlaceIds && v.id && likedPlaceIds.includes(v.id));
+  if (isLiked) tags.push("You liked this");
+  else if (prefs?.novelty === "repeat" && isRecent) tags.push("A favorite of yours");
 
   return {
     placeId: v.id || null,
@@ -860,7 +941,7 @@ function mergeVenue(v, hype, mich, curated, prefs, recentPlaceIds, stations, bud
     meta: metaParts.join(" · "),
     _businessStatus: v._businessStatus || null, // carried through the rebuild for debugPool
     why: michWhy(mich, v) || (curated ? `Named a ${curated.area} favourite by ${curated.source}` : null) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
-    _score: scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, transitOnly, nearStation),
+    _score: scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, transitOnly, nearStation, isLiked),
     _category: category,
     _openNow: v.openNow, // true/false/null — used in runPipeline to keep closed venues out of winning slots
   };
@@ -966,7 +1047,7 @@ function michWhy(mich, v) {
   return (map[mich.tier] || "In the MICHELIN Guide") + near;
 }
 
-function scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, transitOnly, nearStation) {
+function scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, transitOnly, nearStation, isLiked) {
   // Cap the review-count signal — past a few thousand reviews it's telling
   // you a place is a high-traffic fixture, not that it's better than a place
   // with 800 reviews and a devoted following. Uncapped, this term let sheer
@@ -1000,6 +1081,10 @@ function scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, t
   if (hype?.reviewedBy) score += 2;
   if (v.distanceKm != null) score -= v.distanceKm * 0.8;
   if (v.openNow === false) score -= 3;
+  // A confirmed thumbs-up outweighs a curated blog mention but stays below a
+  // MICHELIN entry — the user's own verdict beats a stranger's recommendation,
+  // and "novelty: surprise" still gets to push it back down below.
+  if (isLiked) score += 8;
 
   // Budget and "near MRT only" are preferences, not hard cutoffs (see
   // runPipeline) — matches get a strong push up the ranking, confirmed

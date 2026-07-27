@@ -78,6 +78,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .tag-michelin { background:none; color:var(--am); border:1px solid var(--am) }
 .tag-trend { background:var(--rdd); color:var(--rd) }
 .tag-reviewed { background:var(--sf2); color:var(--tx2); border:1px solid var(--bd2) }
+.tag-closed { background:var(--rdd); color:var(--rd); border:1px solid var(--rd) }
 .muted { color:var(--tx2); font-size:13.5px }
 
 /* SETUP (home) */
@@ -640,6 +641,7 @@ function showApp(user){
   const startScreen = hasPrefs() ? 'setup' : 'taste';
   history.replaceState({ screen: startScreen }, '', '#' + startScreen);
   renderScreen(startScreen);
+  if (startScreen === 'setup') maybeAskFeedback();
 }
 
 function skipLogin(){
@@ -807,11 +809,41 @@ function getHistory(){
 }
 function pushHistory(item){
   if (!item || !item.placeId) return;
+  const prev = getHistory().find(h => h.placeId === item.placeId);
   const hist = getHistory().filter(h => h.placeId !== item.placeId);
-  hist.unshift({ placeId: item.placeId, name: item.name, ts: Date.now() });
+  // Re-visiting a place shouldn't silently wipe the rating already given to it.
+  hist.unshift({ placeId: item.placeId, name: item.name, ts: Date.now(), rating: (prev && prev.rating) || null });
   localStorage.setItem('eatwhat_history', JSON.stringify(hist.slice(0, 15)));
 }
 function recentPlaceIds(){ return getHistory().map(h => h.placeId); }
+function likedPlaceIds(){ return getHistory().filter(h => h.rating === 'up').map(h => h.placeId); }
+function dislikedPlaceIds(){ return getHistory().filter(h => h.rating === 'down').map(h => h.placeId); }
+
+// The thumbs UI used to toggle two CSS classes, toast "Noted" and persist
+// nothing — no rating had ever reached storage, so nothing could act on one.
+// Ratings now live on the history entry and are sent with every search.
+function setHistoryRating(placeId, rating){
+  const hist = getHistory();
+  const entry = hist.find(h => h.placeId === placeId);
+  if (!entry) return;
+  entry.rating = rating;
+  localStorage.setItem('eatwhat_history', JSON.stringify(hist));
+}
+
+// Asking "how was it?" the instant the user taps directions is useless — they
+// haven't eaten yet. Instead the question waits for the next time the app is
+// opened, and only for a visit old enough to have actually happened.
+const FEEDBACK_MIN_AGE_MS = 90 * 60 * 1000;
+let feedbackPlaceId = null;
+function maybeAskFeedback(){
+  const pending = getHistory().find(h => !h.rating && h.placeId && (Date.now() - (h.ts || 0)) > FEEDBACK_MIN_AGE_MS);
+  if (!pending) return;
+  feedbackPlaceId = pending.placeId;
+  document.getElementById('feedbackName').textContent = `How was ${pending.name}?`;
+  document.getElementById('thumbUp').classList.remove('picked-up');
+  document.getElementById('thumbDown').classList.remove('picked-down');
+  setTimeout(() => document.getElementById('feedbackModal').classList.add('open'), 1200);
+}
 
 const TITLES = {taste:'Your taste', setup:'EatWhat', shuffle:'Finding spots', pick:'Today’s pick', group:'Together', history:'History', settings:'Settings'};
 function renderScreen(id) {
@@ -977,6 +1009,7 @@ function openDetail(idx){
       .then(detail => {
         if (token !== detailOpenToken || !detail) return; // sheet moved on — discard
         if (detail.photoRefs && detail.photoRefs.length) renderGallery(detail.photoRefs, item.emoji, item.name);
+        markClosed('detailTags', detail.businessStatus);
         renderInsights(detail);
       })
       .catch(() => { if (token === detailOpenToken) renderInsights({}); });
@@ -1023,6 +1056,7 @@ const SG_AREAS_RAW = [
   { name: 'Yishun', lat: 1.4295, lng: 103.8353 },
   { name: 'Ang Mo Kio', lat: 1.3691, lng: 103.8454 },
   { name: 'Bishan', lat: 1.3506, lng: 103.8486 },
+  { name: 'Thomson / Upper Thomson', lat: 1.3547, lng: 103.8325 },
   { name: 'Toa Payoh', lat: 1.3343, lng: 103.8563 },
   { name: 'Serangoon', lat: 1.3554, lng: 103.8679 },
   { name: 'Hougang', lat: 1.3712, lng: 103.8925 },
@@ -1066,6 +1100,7 @@ function tagClass(t){
   if (/MICHELIN ★|Green Star/i.test(t)) return 'tag-michelin';
   if (/Bib Gourmand/i.test(t)) return 'tag-michelin';
   if (/MICHELIN Selected/i.test(t)) return 'tag-reviewed';
+  if (/Permanently closed|Temporarily closed/i.test(t)) return 'tag-closed';
   if (/Trending/i.test(t)) return 'tag-trend';
   return 'tag-reviewed';
 }
@@ -1173,7 +1208,7 @@ async function fetchLivePool({ lat, lng, radiusKm, budget, transitOnly, count })
   const res = await fetch(API_BASE + '/api/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lat, lng, radiusKm, budget, transitOnly, count, prefs: getPrefs(), recentPlaceIds: recentPlaceIds() })
+    body: JSON.stringify({ lat, lng, radiusKm, budget, transitOnly, count, prefs: getPrefs(), recentPlaceIds: recentPlaceIds(), likedPlaceIds: likedPlaceIds(), dislikedPlaceIds: dislikedPlaceIds() })
   });
   if (!res.ok) throw new Error('API error ' + res.status);
   const data = await res.json();
@@ -1409,6 +1444,15 @@ function weightedPickIndex(){
   return 0;
 }
 
+// A window of at most `max` finalists that always contains index `landIdx`,
+// clamped to the ends of the list so the ring is never short-changed near the
+// top or bottom of the shortlist.
+function ringSubset(list, landIdx, max){
+  if (list.length <= max) return list.slice();
+  let start = Math.max(0, Math.min(landIdx - Math.floor(max / 2), list.length - max));
+  return list.slice(start, start + max);
+}
+
 // Orbit-carousel reveal: the shortlist sits on a ring that spins around a
 // vertical axis (cards stay upright, like points on an equator) fast and
 // decelerating, landing on the winner facing front — which then pops with a
@@ -1430,17 +1474,26 @@ function playPickReveal(isReroll){
 
   const landIdx = FINALISTS.length > 1 ? weightedPickIndex() : 0;
   pickIdx = landIdx;
-  const n = Math.max(1, FINALISTS.length);
   const spinMs = 2500;
+
+  // The ring is a piece of theatre, not the shortlist. At the maximum count of
+  // 10 the cards overlap heavily at the sides of the orbit and the reveal reads
+  // as clutter, so a cap of 7 keeps the spacing legible. The winner is always
+  // in the ring — the rest are its neighbours in rank order, so the ring still
+  // looks like this shortlist rather than an arbitrary sample.
+  const RING_MAX = 7;
+  const ringCards = ringSubset(FINALISTS, landIdx, RING_MAX);
+  const n = Math.max(1, ringCards.length);
+  const ringLandIdx = ringCards.indexOf(FINALISTS[landIdx]);
 
   if (orbitRAF) cancelAnimationFrame(orbitRAF);
   stage.innerHTML = '<div class="orbit-ring" id="orbitRing"></div>';
   const ring = document.getElementById('orbitRing');
-  const items = FINALISTS.map((c, i) => {
+  const items = ringCards.map((c, i) => {
     const el = document.createElement('div');
     el.className = 'orbit-item';
     el.innerHTML = photoOrEmojiHTML(c, 400);
-    el.dataset.k = (i - landIdx + n) % n; // landIdx's card sits at k=0 — front-facing once the spin settles
+    el.dataset.k = (i - ringLandIdx + n) % n; // the winner sits at k=0 — front-facing once the spin settles
     el.dataset.name = c.name || '';
     ring.appendChild(el);
     return el;
@@ -1585,6 +1638,17 @@ let pickDetailToken = 0;
 // photo resource names for the same image across Nearby Search and Place
 // Details, so the string compare never matched and slide 1 was always a repeat
 // of the hero.
+// Belt and braces behind the pool-level businessStatus filter: if a closure is
+// ever recorded between the search and the detail fetch, say so on the card
+// rather than sending someone to a shuttered stall.
+function markClosed(tagsElId, status){
+  if (!status || !String(status).startsWith('CLOSED')) return;
+  const el = document.getElementById(tagsElId);
+  if (!el || el.querySelector('.tag-closed')) return;
+  const label = status === 'CLOSED_TEMPORARILY' ? 'Temporarily closed' : 'Permanently closed';
+  el.insertAdjacentHTML('afterbegin', `<span class="tag tag-closed">${label}</span>`);
+}
+
 function renderPickHero(refs, item){
   renderGallery(refs, item.emoji, item.name, { track: 'pickGalleryTrack', dots: 'pickGalleryDots' });
 }
@@ -1597,6 +1661,7 @@ function loadPickDetail(item){
       .then(detail => {
         if (token !== pickDetailToken || !detail) return; // superseded by a reroll
         if (detail.photoRefs && detail.photoRefs.length) renderPickHero(detail.photoRefs, item);
+        markClosed('pickTags', detail.businessStatus);
         renderInsights(detail, 'pickInsights');
       })
       .catch(() => { if (token === pickDetailToken) renderInsights({}, 'pickInsights'); });
@@ -1624,9 +1689,11 @@ function notePickVisit(){
 function rateThumb(up){
   document.getElementById('thumbUp').classList.toggle('picked-up', up);
   document.getElementById('thumbDown').classList.toggle('picked-down', !up);
+  if (feedbackPlaceId) setHistoryRating(feedbackPlaceId, up ? 'up' : 'down');
   setTimeout(()=>{
     document.getElementById('feedbackModal').classList.remove('open');
-    toast('Noted', 'ok');
+    feedbackPlaceId = null;
+    toast(up ? 'Noted — more like this' : 'Noted — won\u2019t suggest it again', 'ok');
   }, 500);
 }
 
