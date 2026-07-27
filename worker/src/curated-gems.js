@@ -67,6 +67,11 @@ export const GEMS = [
   { name: "SteakGrill", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Rahim Muslim Food", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Abang Gemuk", area: "Ang Mo Kio", source: "Eatbook" },
+  // Removed Jul 2026: "OK Chicken Rice" and "Humfull Laksa" were two entries
+  // pointing at one venue (721 Ang Mo Kio Ave 8), and it is CLOSED_PERMANENTLY.
+  // The pipeline now filters on businessStatus regardless — dropping them here
+  // just stops paying for a Text Search that can never yield a suggestion.
+  // Do not re-add from a stale Eatbook listing.
   { name: "Banh Mi Sai Gon", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Magic Kitchen", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Jian Zao Ipoh Curry Noodles", area: "Ang Mo Kio", source: "Eatbook" },
@@ -75,8 +80,6 @@ export const GEMS = [
   { name: "Teck Kee Cooked Food", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Avocadoria", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Teng Sheng Korean BBQ Buffet", area: "Ang Mo Kio", source: "Eatbook" },
-  { name: "OK Chicken Rice", area: "Ang Mo Kio", source: "Eatbook" },
-  { name: "Humfull Laksa", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Hong Heng Beef Noodle Soup", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Soi 19 Thai Wanton Mee", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "BCD Tofu", area: "Ang Mo Kio", source: "Eatbook" },
