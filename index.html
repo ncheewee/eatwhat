@@ -148,7 +148,12 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 
 /* PICK */
 .pick-photo-wrap { position:relative }
-.pick-photo { position:relative; height:210px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:50px; overflow:hidden; perspective:650px; transition:box-shadow .25s ease }
+.pick-photo { position:relative; height:240px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:50px; overflow:hidden; transition:box-shadow .25s ease }
+/* The hero IS the gallery now — one full-width swipeable carousel instead of a
+   big still plus a redundant strip underneath it. */
+.pick-photo .detail-gallery-track { width:100%; height:100% }
+.pick-photo .detail-gallery-slide { height:100% }
+.pick-photo .detail-gallery-dots { bottom:10px; z-index:3 }
 .pick-card.spinning #pickDetails { opacity:0; pointer-events:none }
 .pick-card.spinning .pick-name { opacity:.55 }
 .pick-card.flourish .pick-photo { animation:photoGlowPulse 1.6s ease forwards }
@@ -167,8 +172,16 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .pick-photo img { width:100%; height:100%; object-fit:cover; display:block }
 .pick-card { background:none }
 .orbit-ring { position:absolute; inset:0; transform-style:preserve-3d }
-.orbit-item { position:absolute; top:50%; left:50%; width:62px; height:82px; margin:-41px 0 0 -31px; border-radius:10px; background:var(--sf2); border:1px solid var(--bd2); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:24px; box-shadow:0 6px 14px rgba(0,0,0,.4) }
+.orbit-item { position:absolute; top:50%; left:50%; width:min(44vw,168px); height:min(59vw,224px); border-radius:14px; background:var(--sf2); border:1px solid var(--bd2); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:46px; box-shadow:0 16px 38px rgba(0,0,0,.6) }
 .orbit-item img { width:100%; height:100%; object-fit:cover; display:block }
+/* Full-screen reveal takeover — the spin used to happen inside a 210px slot in
+   the card, which read as a fidget rather than a draw. It now owns the screen. */
+.spin-overlay { position:fixed; inset:0; z-index:700; max-width:430px; margin:0 auto; background:rgba(14,12,10,.94); -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; opacity:0; pointer-events:none; transition:opacity .28s ease }
+.spin-overlay.open { opacity:1; pointer-events:auto }
+.spin-title { font-size:12px; letter-spacing:.2em; color:var(--tx3) }
+.spin-stage { position:relative; width:100%; height:min(60vh,430px); perspective:1100px; transform-style:preserve-3d }
+.spin-name { font-family:'Fraunces'; font-weight:600; font-size:19px; color:var(--tx); text-align:center; padding:0 26px; min-height:25px; opacity:.9; transition:opacity .15s ease }
+.spin-hint { font-size:12px; color:var(--tx3); letter-spacing:.06em }
 .spark { position:absolute; opacity:0; font-size:18px; color:var(--am); pointer-events:none; text-shadow:0 0 6px rgba(201,162,74,.8); z-index:5 }
 .spark.big { font-size:24px }
 .spark.s0{ top:2%; left:2% } .spark.s1{ top:6%; right:0% } .spark.s2{ bottom:0%; left:8% } .spark.s3{ bottom:4%; right:6% }
@@ -204,7 +217,6 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .detail-photo { height:220px; border-radius:2px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:52px; overflow:hidden; margin:-22px -20px 16px }
 .detail-photo img { width:100%; height:100%; object-fit:cover; display:block }
 .detail-gallery { position:relative; margin:-22px -20px 16px }
-#pickGalleryWrap { margin:6px -2px 16px; border-radius:2px; overflow:hidden }
 .detail-gallery-track { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; scrollbar-width:none }
 .detail-gallery-track::-webkit-scrollbar { display:none }
 .detail-gallery-slide { flex:0 0 100%; scroll-snap-align:center; height:220px; background:linear-gradient(160deg,#3a3226,#1c1814); display:flex; align-items:center; justify-content:center; font-size:52px; overflow:hidden }
@@ -434,7 +446,10 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
       <div style="font-weight:600;font-size:15px;letter-spacing:.03em;padding-top:16px" id="pickScreenTitle">CHOOSING…</div>
       <div class="pick-card" id="pickCard">
         <div class="pick-photo-wrap">
-          <div class="pick-photo" id="pickPhoto">🍜</div>
+          <div class="pick-photo" id="pickPhoto">
+            <div class="detail-gallery-track" id="pickGalleryTrack"></div>
+            <div class="detail-gallery-dots" id="pickGalleryDots"></div>
+          </div>
           <div class="shockwave"></div>
           <div class="shockwave wave2"></div>
           <span class="spark s0 big">✦</span>
@@ -454,13 +469,10 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
             <div class="tag-row" id="pickTags"></div>
             <div class="pick-meta" id="pickMeta"></div>
             <div class="why" id="pickWhy">Dinner · nearby · trending</div>
-            <div class="detail-gallery" id="pickGalleryWrap">
-              <div class="detail-gallery-track" id="pickGalleryTrack"></div>
-              <div class="detail-gallery-dots" id="pickGalleryDots"></div>
-            </div>
             <div id="pickInsights"></div>
             <div class="action-row" id="pickActionRow">
               <button class="btn btn-ghost" onclick="rerollPick()">Reroll</button>
+              <button class="btn btn-ghost" id="pickMapsBtn" onclick="openPickMaps()">Maps ↗</button>
               <button class="btn btn-primary" onclick="acceptPick()">Accept</button>
             </div>
           </div>
@@ -555,6 +567,15 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
       <button class="thumb-btn" id="thumbUp" onclick="rateThumb(true)">👍</button>
     </div>
   </div>
+</div>
+
+<!-- Full-screen "Pick for me" reveal. Lives outside .screen so it can cover
+     the whole app shell, including the header and bottom nav. -->
+<div class="spin-overlay" id="spinOverlay" aria-hidden="true" onclick="skipPickSpin()">
+  <div class="spin-title" id="spinTitle">CHOOSING…</div>
+  <div class="spin-stage" id="spinStage"></div>
+  <div class="spin-name" id="spinName"></div>
+  <div class="spin-hint">tap anywhere to skip</div>
 </div>
 
 <div class="ov" id="areaPickerModal" onclick="if(event.target===this) closeAreaPicker()">
@@ -801,6 +822,7 @@ function renderScreen(id) {
   document.getElementById('backBtn').classList.toggle('show', id !== 'setup');
   closeMenu();
   if (typeof updateBottomNav === 'function') updateBottomNav(id);
+  if (id !== 'pick' && typeof cancelPickSpin === 'function') cancelPickSpin();
   if (id === 'shuffle') setTimeout(startShuffle, 30);
   if (id === 'pick') setTimeout(renderPick, 30);
   if (id === 'group') setTimeout(initSwipe, 30);
@@ -1329,6 +1351,7 @@ function skipSearch(){
 let pickIdx = 0, rerolls = 0;
 let pickSpinToken = 0;
 let orbitRAF = null;
+let pickSpinFinish = null; // lets a tap on the overlay short-circuit the current spin
 
 function renderPick(){
   if (!FINALISTS.length) FINALISTS = POOL.slice(0,4);
@@ -1357,17 +1380,21 @@ function weightedPickIndex(){
 function playPickReveal(isReroll){
   const token = ++pickSpinToken;
   const card = document.getElementById('pickCard');
-  const title = document.getElementById('pickScreenTitle');
-  const stage = document.getElementById('pickPhoto');
+  const overlay = document.getElementById('spinOverlay');
+  const stage = document.getElementById('spinStage');
+  const nameEl = document.getElementById('spinName');
   card.classList.remove('landed', 'flourish');
   card.classList.add('spinning');
-  title.textContent = 'CHOOSING…';
+  document.getElementById('pickScreenTitle').textContent = 'CHOOSING…';
+  document.getElementById('spinTitle').textContent = isReroll ? 'REROLLING…' : 'CHOOSING…';
   document.getElementById('rerollCount').textContent = isReroll ? 'Rerolling…' : 'Shuffling the shortlist…';
+  nameEl.textContent = '';
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
 
   const landIdx = FINALISTS.length > 1 ? weightedPickIndex() : 0;
   pickIdx = landIdx;
   const n = Math.max(1, FINALISTS.length);
-  const radius = 100;
   const spinMs = 2500;
 
   if (orbitRAF) cancelAnimationFrame(orbitRAF);
@@ -1376,19 +1403,31 @@ function playPickReveal(isReroll){
   const items = FINALISTS.map((c, i) => {
     const el = document.createElement('div');
     el.className = 'orbit-item';
-    el.innerHTML = photoOrEmojiHTML(c, 100);
+    el.innerHTML = photoOrEmojiHTML(c, 400);
     el.dataset.k = (i - landIdx + n) % n; // landIdx's card sits at k=0 — front-facing once the spin settles
+    el.dataset.name = c.name || '';
     ring.appendChild(el);
     return el;
   });
 
+  // Radius scales with the takeover's actual width so the ring fills the
+  // screen on a small phone without the front card overflowing on a large one.
+  const radius = Math.round(Math.min(240, Math.max(120, stage.clientWidth * 0.42)));
+
   let settled = false;
+  let frontName = null;
   function finish(){
-    if (settled || token !== pickSpinToken) return; // idempotent — only the first caller (rAF or the fallback timer) does anything
+    if (settled || token !== pickSpinToken) return; // idempotent — only the first caller (rAF, the tap, or the fallback timer) does anything
     settled = true;
+    pickSpinFinish = null;
     if (orbitRAF) cancelAnimationFrame(orbitRAF);
-    settlePick(token);
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
+    // Let the takeover fade before the card's flourish fires, otherwise the
+    // glow pulse plays behind a 94%-opaque backdrop and is simply not seen.
+    setTimeout(() => settlePick(token), 200);
   }
+  pickSpinFinish = finish;
 
   const startedAt = performance.now();
   function tick(now){
@@ -1397,6 +1436,7 @@ function playPickReveal(isReroll){
     const eased = 1 - Math.pow(1 - p, 3); // ease-out — fast then decelerating
     const globalAngle = 1080 * eased; // three full turns, always a multiple of 360 at p=1
 
+    let bestZ = -Infinity, bestName = null;
     items.forEach((el) => {
       const k = Number(el.dataset.k);
       const deg = globalAngle + k * (360 / n);
@@ -1404,12 +1444,20 @@ function playPickReveal(isReroll){
       const x = radius * Math.sin(rad);
       const z = radius * Math.cos(rad);
       const depth = (z / radius + 1) / 2;
-      const scale = 0.55 + 0.55 * depth;
-      const opacity = 0.25 + 0.75 * depth;
-      el.style.transform = `translate(${x.toFixed(1)}px,0) translateZ(${z.toFixed(1)}px) scale(${scale.toFixed(2)})`;
+      const scale = 0.5 + 0.6 * depth;
+      const opacity = 0.18 + 0.82 * depth;
+      el.style.transform = `translate(-50%,-50%) translate(${x.toFixed(1)}px,0) translateZ(${z.toFixed(1)}px) scale(${scale.toFixed(2)})`;
       el.style.opacity = opacity.toFixed(2);
       el.style.zIndex = Math.round(z + radius);
+      if (z > bestZ){ bestZ = z; bestName = el.dataset.name; }
     });
+
+    // Name of whichever card is currently facing front — the reel reads as a
+    // slot machine slowing down rather than a silent carousel.
+    if (bestName !== frontName){
+      frontName = bestName;
+      nameEl.textContent = bestName || '';
+    }
 
     if (p < 1){
       orbitRAF = requestAnimationFrame(tick);
@@ -1427,6 +1475,17 @@ function playPickReveal(isReroll){
   setTimeout(finish, spinMs + 500);
 }
 
+// Tap-to-skip on the takeover, and a hard cancel for when the user navigates
+// away mid-spin — otherwise the overlay would outlive the pick screen.
+function skipPickSpin(){ if (pickSpinFinish) pickSpinFinish(); }
+function cancelPickSpin(){
+  pickSpinToken++;
+  pickSpinFinish = null;
+  if (orbitRAF) cancelAnimationFrame(orbitRAF);
+  const ov = document.getElementById('spinOverlay');
+  if (ov){ ov.classList.remove('open'); ov.setAttribute('aria-hidden', 'true'); }
+}
+
 function settlePick(token){
   if (token !== pickSpinToken) return;
   if (orbitRAF) cancelAnimationFrame(orbitRAF);
@@ -1434,7 +1493,7 @@ function settlePick(token){
   card.classList.remove('spinning');
   card.classList.add('landed');
   document.getElementById('pickScreenTitle').textContent = "TODAY'S PICK";
-  paintPick(); // restores #pickPhoto to the winner's still image, over the orbit ring markup
+  paintPick(); // fills the card with the winner now that the takeover has faded
   // 'flourish' was already removed back at the start of the spin (seconds
   // ago), so there's no reflow-batching reason to gate this add behind a
   // frame callback — doing it directly also means it isn't at the mercy of
@@ -1470,7 +1529,7 @@ function spawnConfetti(count){
 function paintPick(){
   const c = FINALISTS[pickIdx % FINALISTS.length];
   document.getElementById('pickName').textContent = c.name;
-  document.getElementById('pickPhoto').innerHTML = photoOrEmojiHTML(c, 500);
+  renderPickHero(c.photoRef ? [c.photoRef] : [], c);
   document.getElementById('pickDescription').textContent = c.description || '';
   document.getElementById('pickTags').innerHTML = c.tags.map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join('');
   document.getElementById('pickMeta').innerHTML = c.meta.split(' · ').map(m=>`<span>${m}</span>`).join('');
@@ -1483,27 +1542,16 @@ function paintPick(){
 // shortlist detail sheet shows on tap — surfaced automatically once the
 // reveal lands, so the winner doesn't need a second tap to see the full story.
 let pickDetailToken = 0;
-// The hero photo above (#pickPhoto, painted in paintPick()) already shows
-// this venue's primary photo large — Google's own photo list almost always
-// returns that same primary shot first, so rendering it *again* in the
-// mini-gallery below the name/info was showing the identical thumbnail
-// twice. This drops the first photo from that gallery (it's redundant with
-// the hero) and hides the gallery entirely when nothing else is left to show.
-function renderPickGallery(refs, item){
-  // Filter by exact match rather than blindly dropping index 0 — more
-  // robust in case photo ordering ever differs between the search result
-  // and the later place-detail fetch.
-  const rest = (refs || []).filter((r) => r !== item.photoRef);
-  const wrap = document.getElementById('pickGalleryWrap');
-  if (!rest.length){
-    if (wrap) wrap.style.display = 'none';
-    return;
-  }
-  if (wrap) wrap.style.display = '';
-  renderGallery(rest, item.emoji, item.name, { track: 'pickGalleryTrack', dots: 'pickGalleryDots' });
+// The winner's photo area IS the carousel — there is no separate still to
+// duplicate. This matters because the old dedupe (drop any gallery photo whose
+// reference equals the hero's) could never work: Google returns *different*
+// photo resource names for the same image across Nearby Search and Place
+// Details, so the string compare never matched and slide 1 was always a repeat
+// of the hero.
+function renderPickHero(refs, item){
+  renderGallery(refs, item.emoji, item.name, { track: 'pickGalleryTrack', dots: 'pickGalleryDots' });
 }
 function loadPickDetail(item){
-  renderPickGallery(item.photoRef ? [item.photoRef] : [], item);
   renderInsights(null, 'pickInsights');
   const token = ++pickDetailToken;
   if (item.placeId && API_BASE && !API_BASE.includes('YOUR-WORKER-SUBDOMAIN')){
@@ -1511,7 +1559,7 @@ function loadPickDetail(item){
       .then(res => res.ok ? res.json() : null)
       .then(detail => {
         if (token !== pickDetailToken || !detail) return; // superseded by a reroll
-        if (detail.photoRefs && detail.photoRefs.length) renderPickGallery(detail.photoRefs, item);
+        if (detail.photoRefs && detail.photoRefs.length) renderPickHero(detail.photoRefs, item);
         renderInsights(detail, 'pickInsights');
       })
       .catch(() => { if (token === pickDetailToken) renderInsights({}, 'pickInsights'); });
@@ -1520,6 +1568,18 @@ function loadPickDetail(item){
   }
 }
 function rerollPick(){ rerolls++; playPickReveal(true); }
+
+// Same deep link the detail sheet uses — query_place_id pins Maps to the exact
+// venue rather than letting it re-guess from a name that may not be unique.
+function openPickMaps(){
+  const c = FINALISTS[pickIdx % FINALISTS.length];
+  if (!c) return;
+  const q = encodeURIComponent(c.name || 'restaurant');
+  const url = c.placeId
+    ? `https://www.google.com/maps/search/?api=1&query=${q}&query_place_id=${encodeURIComponent(c.placeId)}`
+    : `https://www.google.com/maps/search/?api=1&query=${q}`;
+  window.open(url, '_blank', 'noopener');
+}
 function acceptPick(){
   const c = FINALISTS[pickIdx % FINALISTS.length];
   pushHistory(c);
