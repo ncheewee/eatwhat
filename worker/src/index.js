@@ -99,7 +99,7 @@ export default {
       ? `:${prefs.style || "-"}:${prefs.ambience || "-"}:${prefs.novelty || "-"}:${(prefs.dietary || []).slice().sort().join(",")}`
       : "";
     const budgetKey = Array.isArray(budget) ? budget.slice().sort().join(",") : budget;
-    const cacheKey = `search:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budgetKey}${prefsKey}${transitOnly ? ":mrt" : ""}:n${count}`;
+    const cacheKey = `search2:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budgetKey}${prefsKey}${transitOnly ? ":mrt" : ""}:n${count}`;
 
     // Skip the cache entirely once novelty/recency personalization is in play —
     // the ranking depends on this specific user's recent history, so a shared
@@ -221,6 +221,7 @@ async function handlePlaceDetail(url, env) {
         "reviews.authorAttribution.displayName",
         "reviews.relativePublishTimeDescription",
         "formattedAddress",
+        "businessStatus",
       ].join(","),
     },
   });
@@ -230,6 +231,7 @@ async function handlePlaceDetail(url, env) {
   const result = {
     photoRefs: (data.photos || []).slice(0, 6).map((p) => p.name),
     editorialSummary: data.editorialSummary?.text || null,
+    businessStatus: data.businessStatus || null,
     reviews: (data.reviews || []).slice(0, 5).map((r) => ({
       text: r.text?.text || "",
       rating: r.rating || null,
@@ -368,7 +370,15 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   const merged = shortlist.map((v) =>
     mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), lookupCurated(v.name, curatedGems), prefs, recentPlaceIds, stations, budget, transitOnly)
   );
-  const ranked = rankVenues(merged);
+  // A shuttered stall is not a low-scoring suggestion, it is a wrong one, so
+  // this drops it from the candidate pool outright rather than penalising it.
+  // Curated gems make this load-bearing: a human-curated name carries enough
+  // score to out-earn any penalty, which is how permanently-closed Eatbook
+  // picks (OK Chicken Rice, Humfull Laksa) kept winning slots in Ang Mo Kio.
+  // Places omits businessStatus on some records, so only an explicit CLOSED_*
+  // is treated as closed — an absent field stays in the pool.
+  const operational = merged.filter((v) => !String(v._businessStatus || "").startsWith("CLOSED"));
+  const ranked = rankVenues(operational.length ? operational : merged);
 
   if (!ranked.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
@@ -400,7 +410,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   }
 
   const winners = topN.slice(0, count);
-  const pool = topN.map(({ _score, _category, _openNow, ...v }, i) => ({ ...v, win: i < count }));
+  const pool = topN.map(({ _score, _category, _openNow, _businessStatus, ...v }, i) => ({ ...v, win: i < count }));
 
   // "Near MRT only" is now a soft preference rather than a hard filter, so
   // there's no all-or-nothing fallback to react to — just tell the user
@@ -435,6 +445,7 @@ const PLACES_FIELD_MASK = [
   "places.priceLevel",
   "places.location",
   "places.currentOpeningHours.openNow",
+  "places.businessStatus",
   "places.primaryType",
   "places.primaryTypeDisplayName",
   "places.types",
@@ -525,6 +536,7 @@ function normalizePlace(p, lat, lng) {
     priceLevel: p.priceLevel || "PRICE_LEVEL_UNSPECIFIED",
     priceSymbol: symbolForPriceLevel(p.priceLevel),
     openNow: p.currentOpeningHours?.openNow ?? null,
+    _businessStatus: p.businessStatus || null, // OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY
     distanceKm: haversineKm(lat, lng, p.location?.latitude, p.location?.longitude),
     lat: p.location?.latitude ?? null,
     lng: p.location?.longitude ?? null,
@@ -615,7 +627,9 @@ async function fetchLiveOpenNow({ placeId, apiKey, env }) {
 async function resolveCuratedGems({ lat, lng, radiusKm, apiKey, env }) {
   const results = await Promise.all(
     GEMS.map(async (gem) => {
-      const cacheKey = `gemplace:${gem.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      // v2 prefix: entries written before businessStatus joined the field mask
+      // have no status to filter on, so the deploy must not reuse them.
+      const cacheKey = `gemplace2:${gem.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
       let raw = null;
       if (env.SEARCH_CACHE) {
         try {

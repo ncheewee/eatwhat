@@ -419,7 +419,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
         </div>
       </div>
 
-      <button class="btn btn-primary" style="margin-top:auto" onclick="go('shuffle')">Find spots</button>
+      <button class="btn btn-primary" style="margin-top:auto" onclick="shuffleStale=true;go('shuffle')">Find spots</button>
     </div>
 
     <!-- SEARCH / CURATION -->
@@ -471,10 +471,9 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
             <div class="why" id="pickWhy">Dinner · nearby · trending</div>
             <div id="pickInsights"></div>
             <div class="action-row" id="pickActionRow">
-              <button class="btn btn-ghost" onclick="rerollPick()">Reroll</button>
-              <button class="btn btn-ghost" id="pickMapsBtn" onclick="openPickMaps()">Maps ↗</button>
-              <button class="btn btn-primary" onclick="acceptPick()">Accept</button>
+              <button class="btn btn-ghost" style="width:100%" onclick="rerollPick()">Reroll</button>
             </div>
+            <a class="detail-maps-link" id="pickMapsLink" href="#" target="_blank" rel="noopener" onclick="notePickVisit()">View on Google Maps ↗</a>
           </div>
         </div>
       </div>
@@ -823,7 +822,11 @@ function renderScreen(id) {
   closeMenu();
   if (typeof updateBottomNav === 'function') updateBottomNav(id);
   if (id !== 'pick' && typeof cancelPickSpin === 'function') cancelPickSpin();
-  if (id === 'shuffle') setTimeout(startShuffle, 30);
+  // Coming *back* to a shortlist that is still on screen must not re-run the
+  // search: it costs a Places call, replays 6 seconds of reasoning theatre and
+  // — because the pipeline is partly random — can hand back a different set
+  // than the one the user just backed out of.
+  if (id === 'shuffle') setTimeout(shuffleStale ? startShuffle : restoreShuffle, 30);
   if (id === 'pick') setTimeout(renderPick, 30);
   if (id === 'group') setTimeout(initSwipe, 30);
   if (id === 'settings') renderSettingsTasteSummary();
@@ -1052,6 +1055,7 @@ const MOCK_POOL = [
 let POOL = MOCK_POOL;      // last resolved shortlist (live or mock) — read by Pick / Together screens
 let FINALISTS = [];
 let currentIsMock = true;
+let shuffleStale = true;   // true = the next visit to the shuffle screen must run a real search
 let searchDone = false, searchTimers = [];
 function clearSearchTimers(){ searchTimers.forEach(t=>clearTimeout(t)); searchTimers=[]; }
 function T(fn, ms){ const id=setTimeout(fn, ms); searchTimers.push(id); return id; }
@@ -1280,6 +1284,48 @@ async function startShuffle(){
   finishSearch(usingMock);
 }
 
+function buildFinalistRow(f, i){
+  const el = document.createElement('div');
+  el.className='finalist-row';
+  el.onclick = () => openDetail(i);
+  el.innerHTML = `
+    <div class="finalist-rank">${i+1}</div>
+    <div class="finalist-thumb">${photoOrEmojiHTML(f, 160)}</div>
+    <div class="finalist-info">
+      <div class="finalist-name">${escapeHtml(f.name)}</div>
+      <div class="finalist-desc">${escapeHtml(f.description || f.meta || '')}</div>
+      <div class="finalist-tagrow">${(f.tags||[]).slice(0,2).map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join('')}</div>
+    </div>
+    <div class="finalist-chevron">›</div>`;
+  return el;
+}
+
+// Re-paints the shortlist the user already has, with no network call and none
+// of the reveal choreography — this is the gesture-back path, where replaying
+// the search would be both slow and (thanks to the weighted pick) wrong.
+function restoreShuffle(){
+  if (!FINALISTS.length){ startShuffle(); return; }
+  clearSearchTimers();
+  searchDone = true;
+  document.getElementById('reasonLog').innerHTML = '';
+  const pool = document.getElementById('pool');
+  const finalistsEl = document.getElementById('finalists');
+  pool.style.display = 'none';
+  pool.innerHTML = '';
+  document.getElementById('searchTitle').textContent = 'Your shortlist';
+  document.getElementById('skipHint').style.display = 'none';
+  document.getElementById('poolCount').innerHTML = `<b>${FINALISTS.length}</b> made the cut${currentIsMock ? ' · demo data' : ''}`;
+  finalistsEl.innerHTML = '';
+  finalistsEl.classList.add('show');
+  detailItems = FINALISTS;
+  FINALISTS.forEach((f, i) => {
+    const el = buildFinalistRow(f, i);
+    el.classList.add('in'); // already "arrived" — no stagger on a return visit
+    finalistsEl.appendChild(el);
+  });
+  document.getElementById('shuffleActions').classList.add('show');
+}
+
 function finishSearch(usingMock){
   if (searchDone) return;
   searchDone = true; clearSearchTimers();
@@ -1288,6 +1334,7 @@ function finishSearch(usingMock){
   if (active){ active.classList.remove('active'); active.classList.add('done'); const m=active.querySelector('.rmark'); if(m) m.innerHTML='✓'; }
 
   FINALISTS = POOL.filter(p=>p.win);
+  shuffleStale = false; // a returning user gets this shortlist back, not a new one
   document.getElementById('searchTitle').textContent = 'Your shortlist';
   document.getElementById('skipHint').style.display='none';
   document.getElementById('poolCount').innerHTML = `<b>${FINALISTS.length}</b> made the cut${usingMock ? ' · demo data' : ''}`;
@@ -1308,18 +1355,7 @@ function finishSearch(usingMock){
       finalistsEl.classList.add('show');
       detailItems = FINALISTS;
       FINALISTS.forEach((f,i)=>{
-        const el = document.createElement('div');
-        el.className='finalist-row';
-        el.onclick = () => openDetail(i);
-        el.innerHTML = `
-          <div class="finalist-rank">${i+1}</div>
-          <div class="finalist-thumb">${photoOrEmojiHTML(f, 160)}</div>
-          <div class="finalist-info">
-            <div class="finalist-name">${escapeHtml(f.name)}</div>
-            <div class="finalist-desc">${escapeHtml(f.description || f.meta || '')}</div>
-            <div class="finalist-tagrow">${(f.tags||[]).slice(0,2).map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join('')}</div>
-          </div>
-          <div class="finalist-chevron">›</div>`;
+        const el = buildFinalistRow(f, i);
         finalistsEl.appendChild(el);
         setTimeout(()=>el.classList.add('in'), i*130);
       });
@@ -1535,6 +1571,7 @@ function paintPick(){
   document.getElementById('pickMeta').innerHTML = c.meta.split(' · ').map(m=>`<span>${m}</span>`).join('');
   document.getElementById('pickWhy').textContent = c.why;
   document.getElementById('rerollCount').textContent = rerolls ? `${rerolls} reroll${rerolls===1?'':'s'}` : '4s · 0 rerolls';
+  document.getElementById('pickMapsLink').href = pickMapsUrl(c);
   loadPickDetail(c);
 }
 
@@ -1571,22 +1608,18 @@ function rerollPick(){ rerolls++; playPickReveal(true); }
 
 // Same deep link the detail sheet uses — query_place_id pins Maps to the exact
 // venue rather than letting it re-guess from a name that may not be unique.
-function openPickMaps(){
-  const c = FINALISTS[pickIdx % FINALISTS.length];
-  if (!c) return;
-  const q = encodeURIComponent(c.name || 'restaurant');
-  const url = c.placeId
+function pickMapsUrl(c){
+  const q = encodeURIComponent((c && c.name) || 'restaurant');
+  return c && c.placeId
     ? `https://www.google.com/maps/search/?api=1&query=${q}&query_place_id=${encodeURIComponent(c.placeId)}`
     : `https://www.google.com/maps/search/?api=1&query=${q}`;
-  window.open(url, '_blank', 'noopener');
 }
-function acceptPick(){
+
+// With Accept gone, opening directions is the strongest "I'm actually going
+// here" signal the app gets — so that is what writes the history entry now.
+function notePickVisit(){
   const c = FINALISTS[pickIdx % FINALISTS.length];
-  pushHistory(c);
-  toast('Accepted', 'ok');
-  document.getElementById('feedbackName').textContent = `How was ${c.name}?`;
-  setTimeout(()=>{ document.getElementById('feedbackModal').classList.add('open'); }, 900);
-  go('setup');
+  if (c) pushHistory(c);
 }
 function rateThumb(up){
   document.getElementById('thumbUp').classList.toggle('picked-up', up);
