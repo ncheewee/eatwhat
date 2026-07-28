@@ -65,7 +65,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .login-logo { font-family:'Fraunces',serif; font-weight:600; font-size:38px; color:var(--tx) }
 .login-tag { font-size:14px; color:var(--tx2); text-align:center; margin-top:-14px }
 #gsiButton { min-height:44px }
-.login-skip { font-size:12.5px; color:var(--tx3); text-decoration:underline; cursor:pointer; margin-top:6px }
+.login-note { font-size:12.5px; color:var(--tx2); text-align:center; line-height:1.5; max-width:280px; margin-top:6px }
 #hdr { padding:16px 18px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; gap:8px; border-bottom:1px solid var(--bd) }
 .hdr-left { display:flex; align-items:center; gap:10px }
 #backBtn { display:none; background:none; border:1px solid var(--bd); width:30px; height:30px; border-radius:50%; align-items:center; justify-content:center; cursor:pointer; font-size:16px; color:var(--tx) }
@@ -318,7 +318,8 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
   <div class="login-logo">EatWhat</div>
   <div class="login-tag">Decide what to eat in 30 seconds.<br>Sign in to save your taste over time.</div>
   <div id="gsiButton"></div>
-  <div class="login-skip" id="loginSkip" style="display:none" onclick="skipLogin()">Continue without signing in</div>
+  <div class="login-note" id="loginError" style="display:none"></div>
+  <button class="btn btn-ghost" id="loginRetry" style="display:none" onclick="location.reload()">Try again</button>
 </div>
 
 <div id="app">
@@ -622,7 +623,9 @@ let gisReady = false;
 function initGoogleAuth(){
   if (gisReady) return; // idempotent — never re-initialize within the same page load
   if (!(window.google && google.accounts && google.accounts.id) || GOOGLE_CLIENT_ID.startsWith('YOUR_')){
-    document.getElementById('loginSkip').style.display = '';
+    // No bypass exists any more, so a failure to load Google Sign-In must offer
+    // a way forward rather than leaving the visitor at a dead gate.
+    showLoginError("Google Sign-In couldn't load. Check your connection, or disable any script blocker for this page.");
     return;
   }
   gisReady = true;
@@ -646,8 +649,15 @@ function handleCredentialResponse(response){
     localStorage.setItem('eatwhat_user', JSON.stringify(user));
     showApp(user);
   } catch (e) {
-    document.getElementById('loginSkip').style.display = '';
+    showLoginError("That sign-in didn't complete. Please try again.");
   }
+}
+
+function showLoginError(msg){
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.style.display = '';
+  document.getElementById('loginRetry').style.display = '';
 }
 
 function getStoredUser(){
@@ -666,33 +676,36 @@ function showApp(user){
   }
   PARTICIPANTS = [(user && user.name ? user.name.split(' ')[0] : 'You'), 'Friend'];
   document.getElementById('turnPill').textContent = PARTICIPANTS[0];
-  // First-time sign-in (or "continue without signing in") gets a quick taste quiz
-  // so curation can be tailored from the very first search.
+  // First-time sign-in gets a quick taste quiz so curation can be tailored from
+  // the very first search.
   const startScreen = hasPrefs() ? 'setup' : 'taste';
   history.replaceState({ screen: startScreen }, '', '#' + startScreen);
   renderScreen(startScreen);
   if (startScreen === 'setup') maybeAskFeedback();
 }
 
-function skipLogin(){
-  showApp(null);
-}
-
 function signOut(){
   localStorage.removeItem('eatwhat_user');
   document.getElementById('avatarEl').innerHTML = 'Me';
   document.getElementById('loginGate').classList.remove('hidden');
-  document.getElementById('loginSkip').style.display = ''; // button + skip link both already exist and work
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginRetry').style.display = 'none';
   if (window.google && google.accounts && google.accounts.id){
     google.accounts.id.disableAutoSelect();
     google.accounts.id.prompt(); // offer One Tap again — button itself doesn't need re-rendering
   }
 }
 
-// If the GIS script is slow/blocked, still let the user in after a short wait
 window.addEventListener('load', () => {
   setTimeout(initGoogleAuth, 300);
-  setTimeout(() => { if (!document.getElementById('loginGate').classList.contains('hidden')) document.getElementById('loginSkip').style.display = ''; }, 4000);
+  // GIS can be slow rather than absent, so give it a real chance before saying
+  // anything — and only complain if it genuinely never initialised.
+  setTimeout(() => {
+    if (!gisReady && !document.getElementById('loginGate').classList.contains('hidden')){
+      initGoogleAuth(); // one more attempt in case the script only just arrived
+      if (!gisReady) showLoginError("Google Sign-In is taking longer than expected to load.");
+    }
+  }, 6000);
   populateAreaSelect();
   buildTicks('countTicks', 8);
   paintSliderFill('countSlider', 3, 10, 3);
