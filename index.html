@@ -328,7 +328,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
       <div class="logo" id="hdrTitle">EatWhat</div>
     </div>
     <div class="avatar-wrap">
-      <div class="avatar" onclick="toggleMenu()" id="avatarEl">CW</div>
+      <div class="avatar" onclick="toggleMenu()" id="avatarEl">Me</div>
       <div class="menu" id="avatarMenu">
         <button class="menu-item" onclick="go('settings');closeMenu()">Settings</button>
         <button class="menu-item" onclick="toggleTheme();closeMenu()">Light mode</button>
@@ -506,7 +506,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
     <div class="screen" id="screen-group">
       <div class="row between" style="padding-top:16px">
         <div style="font-weight:600;font-size:15px;letter-spacing:.03em">TOGETHER</div>
-        <div class="participant-pill" id="turnPill">Chee Wee</div>
+        <div class="participant-pill" id="turnPill">You</div>
       </div>
       <div class="swipe-stage" id="swipeStage"></div>
       <div class="swipe-actions">
@@ -626,7 +626,12 @@ function initGoogleAuth(){
     return;
   }
   gisReady = true;
-  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse, auto_select: true });
+  // auto_select:false — with it on, One Tap silently signs a first-time visitor
+  // in with whatever Google account their browser is already holding, no tap and
+  // no prompt. Opening a shared link and landing straight inside a signed-in app
+  // reads as "I'm logged in as someone else" even though it was their own
+  // account. Returning users still get the cached-session path below.
+  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse, auto_select: false });
   google.accounts.id.renderButton(document.getElementById('gsiButton'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signin_with', width: 260 });
 
   const cached = getStoredUser();
@@ -656,7 +661,11 @@ function showApp(user){
     av.innerHTML = `<img src="${user.picture}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">`;
   } else if (user && user.name){
     av.textContent = user.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  } else {
+    av.textContent = 'Me'; // signed-out / skipped — never another person's initials
   }
+  PARTICIPANTS = [(user && user.name ? user.name.split(' ')[0] : 'You'), 'Friend'];
+  document.getElementById('turnPill').textContent = PARTICIPANTS[0];
   // First-time sign-in (or "continue without signing in") gets a quick taste quiz
   // so curation can be tailored from the very first search.
   const startScreen = hasPrefs() ? 'setup' : 'taste';
@@ -671,7 +680,7 @@ function skipLogin(){
 
 function signOut(){
   localStorage.removeItem('eatwhat_user');
-  document.getElementById('avatarEl').innerHTML = 'CW';
+  document.getElementById('avatarEl').innerHTML = 'Me';
   document.getElementById('loginGate').classList.remove('hidden');
   document.getElementById('loginSkip').style.display = ''; // button + skip link both already exist and work
   if (window.google && google.accounts && google.accounts.id){
@@ -1719,7 +1728,9 @@ function rateThumb(up){
 }
 
 // ---- Group swipe ----
-const PARTICIPANTS = ['Chee Wee', 'Alex'];
+// Was hardcoded to ['Chee Wee', 'Alex'], so every visitor's Together screen
+// announced the author's name as player one regardless of who was signed in.
+let PARTICIPANTS = ['You', 'Friend'];
 let swipeIdx = 0, participantIdx = 0, swipeResults = {};
 function initSwipe(){
   if (!FINALISTS.length) FINALISTS = POOL.slice(0,4);
