@@ -166,7 +166,7 @@ export const GEMS = [
   { name: "Laifaba Wanton Noodles & Roasted Meats", area: "Bukit Batok", source: "Alderic" },
   { name: "Keng Eng Kee Seafood", area: "Alexandra Village", source: "Alderic" },
   { name: "Jin Xi Lai Minced Meat Noodle", area: "Jalan Besar", source: "Alderic" }, // bak chor mee series winner
-  { name: "Hock Lai Seng", area: "Bukit Merah", source: "Alderic" },
+  { name: "Hock Lai Seng", area: "Maxwell Food Centre", source: "Alderic" },
   { name: "Ah Huat Hokkien Mee", area: "Punggol", source: "Alderic" },
   { name: "Brothers Ramen", area: "Anson Road", source: "Alderic" },
   { name: "The Coconut Club", area: "Beach Road", source: "Alderic" },
@@ -175,9 +175,9 @@ export const GEMS = [
   { name: "Meng Kee Fried Kway Teow", area: "Whampoa", source: "Alderic" },
   { name: "Tuan Yuan Pork Ribs Soup", area: "Havelock Road", source: "Alderic" },
   { name: "Hill Street Fried Kway Teow", area: "Bedok", source: "Alderic" },
-  { name: "Hai Kee Teo", area: "Telok Blangah", source: "Alderic" },
-  { name: "Chicken House", area: "Thomson", source: "Alderic" },
-  { name: "Ji Zai Ji", area: "Golden Mile", source: "Alderic" },
+  { name: "Hai Kee Teochew Cha Kuay Teow", area: "Telok Blangah", source: "Alderic" },
+  { name: "Chicken House", area: "Upper Thomson", source: "Alderic" },
+  { name: "Ji Zai Ji Golden Mile Hainanese Boneless Chicken Rice", area: "Golden Mile", source: "Alderic" },
 
   // --- Upper Thomson / Shunfu (Eatbook "Shunfu Mart Food Centre Guide") ---
   // Added 2026-08-01 to close the street-level-hawker gap flagged in the
