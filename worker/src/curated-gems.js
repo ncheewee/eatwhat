@@ -32,6 +32,40 @@
  *   wrangler kv key put --binding=SEARCH_CACHE "curated:list" --path ./curated-2026.json
  * (a JSON array of {name, area, source} objects, same shape as GEMS below).
  *
+ * ⚠️ NAMING RULES — learned the hard way on 2026-08-01, do not relearn:
+ *
+ * 1. STORE THE FULL GOOGLE MAPS LISTING NAME, not the colloquial short
+ *    form. "Ji Zai Ji" was stored for what Places lists as "Ji Zai Ji 鸡仔记
+ *    Golden Mile Hainanese Boneless Chicken Rice" — those two can never
+ *    match, and nothing reports it.
+ *
+ * 2. WATCH THE 10-CHARACTER FLOOR. lookupCurated()'s fuzzy branch is
+ *    guarded on key.length >= 10 (both sides). Any entry whose NORMALISED
+ *    name is shorter than 10 chars is exact-match-only and will silently
+ *    fail against a longer Places name. Check with normalizeName() before
+ *    adding a short name; if it comes in under 10, use the fuller listing
+ *    name instead.
+ *
+ * 3. GEM-HEALTH DOES NOT CATCH WRONG MATCHES, only dead and unresolvable
+ *    ones. A generic name ("Chicken House", "Creamier") can bind to the
+ *    wrong branch or an entirely different venue and still report
+ *    OPERATIONAL forever. When adding a generic or multi-outlet name,
+ *    read the resolvedTo field on the next walk rather than trusting the
+ *    status field. Known ones to eyeball: Chicken House (branches at East
+ *    Coast and Bukit Timah), and the pre-existing 吃Western → "Good Bites",
+ *    The Wholefood Kitchen → "Smart City Kitchens", Crusty Oven →
+ *    "Cottage Kitchen and Bakery", Ming Kee Chicken Rice → "Ming Ji
+ *    Chicken Rice".
+ *
+ * 4. ONLY REAL, SINGLE VENUES BELONG HERE. Not dish categories ("cai
+ *    fan", "pandan waffle") and not hawker centres — those go in
+ *    hawker-centres.js. Neither resolves to one place_id.
+ *
+ * 5. VERIFY THE AREA AGAINST THE LISTING TOO. It is informational only and
+ *    does not affect matching, but a wrong area (Hock Lai Seng filed under
+ *    Bukit Merah when it is at Maxwell) defeats the point of having a
+ *    field a human auditor can sanity-check at a glance.
+ *
  * ⚠️ REVISIT SCHEDULE: re-scan source blogs/videos and refresh this list
  *    periodically (see the `curated-gems-refresh` scheduled task) — food
  *    media coverage turns over faster than Michelin's annual cycle.
