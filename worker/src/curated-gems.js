@@ -128,6 +128,20 @@ export const GEMS = [
   { name: "Bao Er Cafe", area: "Balestier", source: "Alderic" },
   { name: "Kobashi", area: "South Bridge Road", source: "Alderic" },
   { name: "Dawn", area: "South Bridge Road", source: "Alderic" },
+  // Added 2026-08-01 from Alderic's ranked dish-by-dish series (@Alderic. on
+  // YouTube, @aldericc on TikTok/IG): the hokkien mee top 3 + dry mention as
+  // recorded by Mothership's writeup of his 16-stall spreadsheet, plus his
+  // laksa episode picks and Top 5 Places To Eat In Singapore 2026.
+  // Skipped Hainan Fried Hokkien Prawn Mee (his best-dry pick) — already in
+  // the list above as a GetFed entry, and both tiers weigh 10 anyway.
+  { name: "Xiao Di Fried Prawn Noodle", area: "Serangoon North", source: "Alderic" }, // his #1 hokkien mee
+  { name: "Come Daily Fried Hokkien Mee", area: "Toa Payoh", source: "Alderic" },
+  { name: "Swee Guan Hokkien Mee", area: "Geylang", source: "Alderic" },
+  { name: "Simon Road Hokkien Mee", area: "Kovan", source: "Alderic" },
+  { name: "Depot Road Zhen Shan Mei Claypot Laksa", area: "Alexandra Village", source: "Alderic" },
+  { name: "928 Yishun Laksa", area: "Yishun", source: "Alderic" },
+  { name: "89 Carrot Cake", area: "MacPherson", source: "Alderic" },
+  { name: "The Cider Pit", area: "Joo Chiat", source: "Alderic" },
 
   // --- Upper Thomson / Shunfu (Eatbook "Shunfu Mart Food Centre Guide") ---
   // Added 2026-08-01 to close the street-level-hawker gap flagged in the
