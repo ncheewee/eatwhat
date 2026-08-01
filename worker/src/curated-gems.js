@@ -57,6 +57,9 @@ export const GEMS = [
 
   // --- Ang Mo Kio (Eatbook "24 Ang Mo Kio Food Gems" 2024) ---
   { name: "Dim Sum Express", area: "Ang Mo Kio", source: "Eatbook" },
+  // 2026-08-01 gem-health: Shanghai Renjia reported CLOSED_TEMPORARILY.
+  // Left in place per policy (runPipeline filters it out while closed);
+  // remove if it is still not OPERATIONAL on the next refresh.
   { name: "Shanghai Renjia", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "Phuket Town Mookata", area: "Ang Mo Kio", source: "Eatbook" },
   { name: "SteakGrill", area: "Ang Mo Kio", source: "Eatbook" },
@@ -125,6 +128,94 @@ export const GEMS = [
   { name: "Bao Er Cafe", area: "Balestier", source: "Alderic" },
   { name: "Kobashi", area: "South Bridge Road", source: "Alderic" },
   { name: "Dawn", area: "South Bridge Road", source: "Alderic" },
+
+  // --- Upper Thomson / Shunfu (Eatbook "Shunfu Mart Food Centre Guide") ---
+  // Added 2026-08-01 to close the street-level-hawker gap flagged in the
+  // Thomson block above: Shunfu Mart is a 7-min walk from Upper Thomson MRT
+  // and is all hawker stalls rather than mall restaurants.
+  { name: "Leong Hainanese Chicken Rice", area: "Upper Thomson", source: "Eatbook" },
+  { name: "Dong Nan Wanton Noodles", area: "Upper Thomson", source: "Eatbook" },
+  { name: "Chocolat N' Spice", area: "Upper Thomson", source: "Eatbook" },
+  { name: "Lai Heng Fried Kuay Teow", area: "Upper Thomson", source: "Eatbook" },
+  { name: "Marsiling Teochew Fish Soup", area: "Upper Thomson", source: "Eatbook" },
+  { name: "Wak Limah Stall", area: "Upper Thomson", source: "Eatbook" },
+  { name: "Quan Ann Prawn Mee", area: "Upper Thomson", source: "Eatbook" },
+  { name: "Mei Zhen Hakka Delicacies", area: "Upper Thomson", source: "Eatbook" },
+  { name: "Huat Heng Fried Prawn Mee", area: "Upper Thomson", source: "Eatbook" },
+  { name: "Heng Heng Bao Bing", area: "Upper Thomson", source: "Eatbook" },
+
+  // --- Toa Payoh (Eatbook area guide + SethLui "Toa Payoh Lorong 8 Market &
+  //     Food Centre", updated Aug 2025) ---
+  // Added 2026-08-01. Deliberately skipped the 2015-era hipster cafes in the
+  // Eatbook listing (Shrove Tuesday, The Daily Press, JQ Chef Cafe, Frozen By
+  // A Thousand Blessings) — high closure risk on an 11-year-old article. The
+  // entries below are long-running hawker stalls. Do not re-add those cafes
+  // from the same listing without first confirming they still trade.
+  { name: "Teochew Handmade Bao", area: "Toa Payoh", source: "Eatbook" },
+  { name: "Chey Sua Carrot Cake", area: "Toa Payoh", source: "Eatbook" },
+  { name: "Tian Tian Lai Hokkien Mee", area: "Toa Payoh", source: "Eatbook" },
+  { name: "Lau Sim Shredded Chicken Noodles", area: "Toa Payoh", source: "Eatbook" },
+  { name: "Uncle Gen's Hong Kong Cuisine", area: "Toa Payoh", source: "Eatbook" },
+  { name: "Soon Heng Rojak", area: "Toa Payoh", source: "Eatbook" },
+  { name: "Hougang 6 Mile Famous Muah Chee", area: "Toa Payoh", source: "Eatbook" },
+  { name: "Creamier", area: "Toa Payoh", source: "Eatbook" },
+  { name: "J99 Eating House", area: "Toa Payoh", source: "Eatbook" },
+  { name: "Hai Kee Noodle", area: "Toa Payoh", source: "SethLui" },
+  { name: "Wanted Western Delights", area: "Toa Payoh", source: "SethLui" },
+  { name: "Sin Sin Prawn Crackers", area: "Toa Payoh", source: "SethLui" },
+  { name: "Nine Stone Avenue", area: "Toa Payoh", source: "SethLui" },
+  { name: "Li Huat Hot & Cold Cheng Tng", area: "Toa Payoh", source: "SethLui" },
+  { name: "Da Lao Fried White Kway Teow", area: "Toa Payoh", source: "SethLui" },
+  { name: "Hock Kee Bak Kut Teh", area: "Toa Payoh", source: "SethLui" },
+  { name: "Allauddin's Briyani", area: "Toa Payoh", source: "SethLui" },
+  { name: "No.9 Thai Kitchen", area: "Toa Payoh", source: "SethLui" },
+  { name: "Coffee House Banh Mi", area: "Toa Payoh", source: "SethLui" },
+
+  // --- Tampines (Eatbook "25 Tampines Hawker Food", Aug 2025 + SethLui
+  //     "Tampines Round Market & Food Centre") ---
+  // Added 2026-08-01.
+  { name: "Old World Bakuteh", area: "Tampines", source: "Eatbook" },
+  { name: "Ho Yun Tim Sum", area: "Tampines", source: "Eatbook" },
+  { name: "Chai Chee Pork Porridge", area: "Tampines", source: "Eatbook" },
+  { name: "Nasi Lemak Specialist", area: "Tampines", source: "Eatbook" },
+  { name: "Fu Yuan Teochew Bak Chor Mee", area: "Tampines", source: "Eatbook" },
+  { name: "Yummy Sarawak Kolo Mee", area: "Tampines", source: "Eatbook" },
+  { name: "Song Han Carrot Cake", area: "Tampines", source: "Eatbook" },
+  { name: "Al Mahboob Indian Rojak", area: "Tampines", source: "Eatbook" },
+  { name: "137 Lor Mee Prawn Mee", area: "Tampines", source: "Eatbook" },
+  { name: "Mui Kee Hainanese Chicken Rice", area: "Tampines", source: "Eatbook" },
+  { name: "Soi Thai Kitchen", area: "Tampines", source: "Eatbook" },
+  { name: "Tokyo Western Food", area: "Tampines", source: "Eatbook" },
+  { name: "Jin Hock Seafood", area: "Tampines", source: "Eatbook" },
+  { name: "Shun Shun Prawn Noodles", area: "Tampines", source: "Eatbook" },
+  { name: "Teo Kee Mushroom Minced Pork Noodle", area: "Tampines", source: "Eatbook" },
+  { name: "Xing Ji Wanton Mee", area: "Tampines", source: "Eatbook" },
+  { name: "Granny's Pancake", area: "Tampines", source: "Eatbook" },
+  { name: "Rajarani Thosai", area: "Tampines", source: "Eatbook" },
+  { name: "Hai Chang Fish Head Steamboat", area: "Tampines", source: "Eatbook" },
+  { name: "Botak Cantonese Porridge", area: "Tampines", source: "Eatbook" },
+  { name: "Yi Le Shu Shi", area: "Tampines", source: "Eatbook" },
+  { name: "House of Dessert", area: "Tampines", source: "Eatbook" },
+  { name: "Jin Kimchi Express", area: "Tampines", source: "Eatbook" },
+  { name: "The Only Burger", area: "Tampines", source: "Eatbook" },
+  { name: "Munchi Pancakes", area: "Tampines", source: "Eatbook" },
+  { name: "Xin Xing Carrot Cake", area: "Tampines", source: "SethLui" },
+
+  // --- Jurong East / Yuhua (DanielFoodDiary "11 Yuhua Market & Hawker Centre
+  //     Stalls", Oct 2024) ---
+  // Added 2026-08-01. Jurong East previously had exactly one entry (Joo Siah
+  // Bak Kut Teh, GetFed), so west-side heartland coverage was thin.
+  { name: "Lai Heng Handmade Teochew Kueh", area: "Jurong East", source: "DanielFoodDiary" },
+  { name: "Hua Xing Bak Kut Teh", area: "Jurong East", source: "DanielFoodDiary" },
+  { name: "Xing Yun Hainanese Boneless Chicken Rice", area: "Jurong East", source: "DanielFoodDiary" },
+  { name: "Soon Lee Heng", area: "Jurong East", source: "DanielFoodDiary" },
+  { name: "Simei Penang Laksa Speciality", area: "Jurong East", source: "DanielFoodDiary" },
+  { name: "Poon Kee Wanton Noodle", area: "Jurong East", source: "DanielFoodDiary" },
+  { name: "Famous Sungei Road Trishaw Laksa", area: "Jurong East", source: "DanielFoodDiary" },
+  { name: "Jing Jing Hokkien Mee & Oyster Omelette", area: "Jurong East", source: "DanielFoodDiary" },
+  { name: "Guang Tai", area: "Jurong East", source: "DanielFoodDiary" },
+  { name: "Ah Wei Jing Dian", area: "Jurong East", source: "DanielFoodDiary" },
+  { name: "Li Fang Zhou Pin", area: "Jurong East", source: "DanielFoodDiary" },
 ];
 
 /**
