@@ -143,6 +143,42 @@ export const GEMS = [
   { name: "89 Carrot Cake", area: "MacPherson", source: "Alderic" },
   { name: "The Cider Pit", area: "Joo Chiat", source: "Alderic" },
 
+  // --- Alderic, annual "Top 5 Places To Eat In Singapore" + series winners ---
+  // Added 2026-08-01 from Chee Wee's compilation of the channel's 2024/2025/2026
+  // Top 5 videos and the "Best of [Dish]" series winners. Excluded three items
+  // from that compilation that cannot resolve to a single Places venue:
+  // "Cai Fan" and "Pandan waffle" (island-wide/generic categories, not venues)
+  // and Chomp Chomp Food Centre (a hawker centre — belongs in hawker-centres.js,
+  // not here). Also skipped Hill Street Tai Hwa Pork Noodle (already carried by
+  // michelin.js, which outranks curated anyway), plus "No. 25" (too generic to
+  // Text Search reliably) and Seng Kee (original outlet closed).
+  { name: "Fan Ji Speciality Noodle", area: "West Coast", source: "Alderic" }, // 2026 #1
+  { name: "Ah Jie Hokkien Mee", area: "Ang Mo Kio", source: "Alderic" },
+  { name: "Loyang Way Big Prawn Noodles", area: "Loyang", source: "Alderic" },
+  { name: "Generation Coffee Roasters", area: "Hong Lim", source: "Alderic" },
+  { name: "Le Cheng Kampong Hainanese Chicken Rice", area: "Eunos", source: "Alderic" }, // 2025 #1
+  { name: "Sungei Road Laksa", area: "Jalan Berseh", source: "Alderic" },
+  { name: "545 Whampoa Prawn Noodles", area: "Tekka", source: "Alderic" },
+  { name: "Ah Seng Durian", area: "Alexandra Village", source: "Alderic" },
+  { name: "Sin Hoi Sai Eating House", area: "East Coast", source: "Alderic" },
+  { name: "Katong Mei Wei Boneless Chicken Rice", area: "Katong", source: "Alderic" }, // 2024 #1
+  { name: "Hougang Oyster Omelette & Fried Kway Teow", area: "Hougang", source: "Alderic" },
+  { name: "Laifaba Wanton Noodles & Roasted Meats", area: "Bukit Batok", source: "Alderic" },
+  { name: "Keng Eng Kee Seafood", area: "Alexandra Village", source: "Alderic" },
+  { name: "Jin Xi Lai Minced Meat Noodle", area: "Jalan Besar", source: "Alderic" }, // bak chor mee series winner
+  { name: "Hock Lai Seng", area: "Bukit Merah", source: "Alderic" },
+  { name: "Ah Huat Hokkien Mee", area: "Punggol", source: "Alderic" },
+  { name: "Brothers Ramen", area: "Anson Road", source: "Alderic" },
+  { name: "The Coconut Club", area: "Beach Road", source: "Alderic" },
+  { name: "Chef Kang's Noodle House", area: "Toa Payoh", source: "Alderic" },
+  { name: "Azmi Restaurant", area: "Serangoon Road", source: "Alderic" },
+  { name: "Meng Kee Fried Kway Teow", area: "Whampoa", source: "Alderic" },
+  { name: "Tuan Yuan Pork Ribs Soup", area: "Havelock Road", source: "Alderic" },
+  { name: "Hill Street Fried Kway Teow", area: "Bedok", source: "Alderic" },
+  { name: "Hai Kee Teo", area: "Telok Blangah", source: "Alderic" },
+  { name: "Chicken House", area: "Thomson", source: "Alderic" },
+  { name: "Ji Zai Ji", area: "Golden Mile", source: "Alderic" },
+
   // --- Upper Thomson / Shunfu (Eatbook "Shunfu Mart Food Centre Guide") ---
   // Added 2026-08-01 to close the street-level-hawker gap flagged in the
   // Thomson block above: Shunfu Mart is a 7-min walk from Upper Thomson MRT
