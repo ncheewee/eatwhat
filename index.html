@@ -161,6 +161,20 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .finalist-info { flex:1; min-width:0 }
 .finalist-name { font-family:'Fraunces'; font-weight:600; font-size:17px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .finalist-desc { font-size:13px; color:var(--tx2); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.finalist-why { font-size:12.5px; color:var(--tx2); font-style:italic; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+
+/* Photo frame: shimmer while the proxied Places image is in flight, then
+   fade the photo in. The brown gradient + emoji is the no-photo fallback,
+   not a stand-in for "still loading". */
+.finalist-thumb, .orbit-item, .swipe-photo, .detail-gallery-slide { position:relative }
+.finalist-thumb .ph, .orbit-item .ph, .swipe-photo .ph, .detail-gallery-slide .ph { position:absolute; inset:0; width:auto; height:auto }
+.ph { position:relative; display:block; width:100%; height:100%; overflow:hidden; background:linear-gradient(160deg,#2a241c,#161310) }
+.ph img { width:100%; height:100%; object-fit:cover; display:block; opacity:0; transition:opacity .35s ease }
+.ph.on img { opacity:1 }
+.ph.on .ph-shimmer, .ph.fail .ph-shimmer { opacity:0 }
+.ph-shimmer { position:absolute; inset:0; background:linear-gradient(110deg,transparent 28%,rgba(255,255,255,.09) 48%,transparent 68%); background-size:220% 100%; animation:phShine 1.15s ease-in-out infinite; pointer-events:none; transition:opacity .3s ease }
+@keyframes phShine { from { background-position:130% 0 } to { background-position:-30% 0 } }
+.ph-fallback { display:flex; width:100%; height:100%; align-items:center; justify-content:center }
 .finalist-tagrow { display:flex; gap:5px; margin-top:6px; flex-wrap:wrap }
 .finalist-chevron { color:var(--tx3); font-size:15px; flex-shrink:0 }
 .shuffle-actions { display:flex; gap:10px; opacity:0; transition:opacity .4s ease; pointer-events:none }
@@ -952,13 +966,14 @@ function photoUrl(item, w){
   return `${API_BASE}/api/photo?ref=${encodeURIComponent(item.photoRef)}&w=${w||300}`;
 }
 
-// Renders a photo <img> if available, else the emoji fallback block — used by
-// finalist rows, the pick card, and swipe cards so they all degrade the same way.
-function photoOrEmojiHTML(item, w){
-  const url = photoUrl(item, w);
-  return url
-    ? `<img src="${url}" alt="${escapeHtml(item.name)}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${item.emoji}'}))">`
-    : (item.emoji || '🍽️');
+function photoFrameHTML(url, alt, emoji, eager){
+  if (!url) return `<span class="ph-fallback">${emoji || '🍽️'}</span>`;
+  return `<span class="ph"><span class="ph-shimmer" aria-hidden="true"></span><img src="${url}" alt="${escapeHtml(alt || '')}" loading="${eager ? 'eager' : 'lazy'}" decoding="async" onload="this.parentElement.classList.add('on')" onerror="this.parentElement.classList.add('fail');this.replaceWith(Object.assign(document.createElement('span'),{className:'ph-fallback',textContent:'${emoji || '🍽️'}'}))"></span>`;
+}
+
+// Renders a photo frame (shimmer → image) if a ref exists, else the emoji.
+function photoOrEmojiHTML(item, w, eager){
+  return photoFrameHTML(photoUrl(item, w), item && item.name, item && item.emoji, eager);
 }
 
 function escapeHtml(s){
@@ -974,13 +989,13 @@ function renderGallery(refs, fallbackEmoji, fallbackName, ids){
   const track = document.getElementById(ids.track);
   const dots = document.getElementById(ids.dots);
   if (!refs || !refs.length){
-    track.innerHTML = `<div class="detail-gallery-slide">${fallbackEmoji || '🍽️'}</div>`;
+    track.innerHTML = `<div class="detail-gallery-slide"><span class="ph-fallback">${fallbackEmoji || '🍽️'}</span></div>`;
     dots.innerHTML = '';
     return;
   }
   track.innerHTML = refs.map((ref, i) => {
     const url = `${API_BASE}/api/photo?ref=${encodeURIComponent(ref)}&w=700`;
-    return `<div class="detail-gallery-slide"><img src="${url}" alt="${escapeHtml(fallbackName||'')} photo ${i+1}" loading="${i===0?'eager':'lazy'}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${fallbackEmoji||'🍽️'}'}))"></div>`;
+    return `<div class="detail-gallery-slide">${photoFrameHTML(url, `${fallbackName || ''} photo ${i + 1}`, fallbackEmoji, i === 0)}</div>`;
   }).join('');
   dots.innerHTML = refs.map((_, i) => `<span class="${i===0?'on':''}"></span>`).join('');
   if (refs.length > 1){
@@ -1370,10 +1385,11 @@ function buildFinalistRow(f, i){
   el.onclick = () => openDetail(i);
   el.innerHTML = `
     <div class="finalist-rank">${i+1}</div>
-    <div class="finalist-thumb">${photoOrEmojiHTML(f, 160)}</div>
+    <div class="finalist-thumb">${photoOrEmojiHTML(f, 160, i < 4)}</div>
     <div class="finalist-info">
       <div class="finalist-name">${escapeHtml(f.name)}</div>
       <div class="finalist-desc">${escapeHtml(f.description || f.meta || '')}</div>
+      ${f.why ? `<div class="finalist-why">${escapeHtml(f.why)}</div>` : ''}
       <div class="finalist-tagrow">${(f.tags||[]).slice(0,2).map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join('')}</div>
     </div>
     <div class="finalist-chevron">›</div>`;
