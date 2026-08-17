@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "test": "node --experimental-default-type=module --test src/rank.test.mjs"
   },
   "devDependencies": {
     "wrangler": "^3.90.0"

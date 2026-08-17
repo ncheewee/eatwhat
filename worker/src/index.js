@@ -2,21 +2,31 @@
  * EatWhat API — Cloudflare Worker
  *
  * POST /api/search
- * body: { lat, lng, radiusKm, budget ("any"|"$"|"$$"|"$$$"), partySize }
+ * body: { lat, lng, radiusKm, budget ("any"|"$"|"$$"|"$$$"|string[]), count }
  *
  * Pipeline:
- *   1. Google Places API (New) — Nearby Search → real venues, ratings, distance, open-now
- *   2. Gemini (grounded with Google Search) — tags venues as Michelin / trending / reviewed-by
- *   3. Rank + merge → top ~8 candidates, top 4 flagged as winners
- *   4. Cache the merged result per (rounded location + budget + radius) in KV for 12h
+ *   1. Nearby Search (popularity + distance) → real venues
+ *   2. Resolve nearby curated gems by name (Text Search)
+ *   3. Hard-out: closed, thumbs-down, dietary clash, umbrella food centres
+ *   4. Rank on a ladder (liked > Michelin > creator > media > hawker > other)
+ *   5. Cache the shortlist per (rounded location + budget + radius) in KV for 12h
  *
- * If GOOGLE_PLACES_API_KEY or GEMINI_API_KEY are missing, or either call fails,
+ * If GOOGLE_PLACES_API_KEY is missing, or the Places call fails,
  * falls back to demo data so the frontend never hard-breaks.
  */
 
 import { buildMichelinIndex, lookupMichelin } from "./michelin.js";
-import { buildCuratedIndex, lookupCurated, GEMS, weightForSource } from "./curated-gems.js";
-import { matchesKnownHawkerCentre } from "./hawker-centres.js";
+import { buildCuratedIndex, lookupCurated, GEMS } from "./curated-gems.js";
+import { gemAreaNearPin, haversineKm } from "./areas.js";
+import {
+  FOODCOURT_HINTS,
+  classifyVenue,
+  dietaryClash,
+  venueRung,
+  scoreVenue,
+  buildWhy,
+  rankVenues,
+} from "./rank.js";
 
 // Tolerant truthiness for config flags. A value piped in via
 // `wrangler secret put` can arrive with a trailing newline, and a
@@ -74,7 +84,6 @@ export default {
     // budget accepts "any", a single symbol "$"/"$$"/"$$$", or an array like ["$","$$"]
     // for a multi-select ("show me cheap and mid-range together").
     const budget = Array.isArray(body.budget) ? body.budget : (body.budget || "any");
-    const partySize = Number(body.partySize) || 2;
     // Taste preferences from the onboarding quiz — all optional, all best-effort.
     // { style: "traditional"|"modern"|"either", novelty: "repeat"|"explore"|"mix",
     //   ambience: "minimal"|"somewhat"|"important", dietary: string[] }
@@ -109,7 +118,7 @@ export default {
       ? `:${prefs.style || "-"}:${prefs.ambience || "-"}:${prefs.novelty || "-"}:${(prefs.dietary || []).slice().sort().join(",")}`
       : "";
     const budgetKey = Array.isArray(budget) ? budget.slice().sort().join(",") : budget;
-    const cacheKey = `search2:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budgetKey}${prefsKey}${transitOnly ? ":mrt" : ""}:n${count}`;
+    const cacheKey = `search3:${lat.toFixed(2)}:${lng.toFixed(2)}:${radiusKm}:${budgetKey}${prefsKey}${transitOnly ? ":mrt" : ""}:n${count}`;
 
     // Skip the cache entirely once novelty/recency personalization is in play —
     // the ranking depends on this specific user's recent history, so a shared
@@ -125,7 +134,7 @@ export default {
 
     let result;
     try {
-      result = await runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, likedPlaceIds, dislikedPlaceIds, transitOnly, count, env, debug });
+      result = await runPipeline({ lat, lng, radiusKm, budget, prefs, recentPlaceIds, likedPlaceIds, dislikedPlaceIds, transitOnly, count, env, debug });
     } catch (err) {
       result = { pool: MOCK_POOL, mock: true, error: String(err) };
     }
@@ -325,7 +334,7 @@ async function handlePlaceDetail(url, env) {
   return json(result);
 }
 
-async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recentPlaceIds, likedPlaceIds = [], dislikedPlaceIds = [], transitOnly, count, env, debug }) {
+async function runPipeline({ lat, lng, radiusKm, budget, prefs, recentPlaceIds, likedPlaceIds = [], dislikedPlaceIds = [], transitOnly, count, env, debug }) {
   if (!env.GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not set");
 
   // MICHELIN tagging — curated list, no API call, no cost, no hallucination.
@@ -444,38 +453,32 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
     }
   }
 
-  // A shuttered stall is not a low-scoring suggestion, it is a wrong one, so it
-  // leaves the candidate pool outright rather than being penalised. Curated
-  // gems make this load-bearing: a human-curated name carries enough score to
-  // out-earn any penalty, which is how OK Chicken Rice & Humfull Laksa (closed
-  // permanently, two Eatbook entries pointing at one venue) held an Ang Mo Kio
-  // slot. This filters `shortlist`, not `merged`, because mergeVenue rebuilds
-  // each venue from a fixed field list and drops _businessStatus on the way.
-  // Places omits the field on some records, so only an explicit CLOSED_* counts.
-  const operational = shortlist.filter(
-    (v) => !String(v._businessStatus || "").startsWith("CLOSED") && !(v.id && dislikedPlaceIds.includes(v.id))
-  );
-  const merged = (operational.length ? operational : shortlist).map((v) =>
+  // Hard-out, not a penalty: closed, thumbs-down, and dietary clash never
+  // compete. Unknown hours (openNow === null) stay in — only an explicit
+  // closed-now or CLOSED_* status is a no.
+  const dietary = prefs?.dietary || [];
+  const eligible = shortlist.filter((v) => {
+    if (String(v._businessStatus || "").startsWith("CLOSED")) return false;
+    if (v.openNow === false) return false;
+    if (v.id && dislikedPlaceIds.includes(v.id)) return false;
+    if (dietaryClash(v, dietary)) return false;
+    return true;
+  });
+  if (!eligible.length) return { pool: MOCK_POOL, mock: true, error: "No venues open nearby" };
+
+  const merged = eligible.map((v) =>
     mergeVenue(v, hypeTags[v.name.toLowerCase()], lookupMichelin(v.name, michelin), lookupCurated(v.name, curatedGems), prefs, recentPlaceIds, likedPlaceIds, stations, budget, transitOnly)
   );
   const ranked = rankVenues(merged);
 
   if (!ranked.length) return { pool: MOCK_POOL, mock: true, error: "No venues found nearby" };
 
-  // A closed venue isn't a worse suggestion for "what to eat right now" — it's
-  // a wrong one, so this is a hard ordering rule rather than the mild -3
-  // scoring penalty applied above. Open (or unknown-hours) venues fill every
-  // winning slot first; a closed venue only ever appears in the winning set
-  // if there genuinely aren't enough open venues nearby to reach `count`.
-  const openRanked = ranked.filter((v) => v._openNow !== false);
-  const closedRanked = ranked.filter((v) => v._openNow === false);
-  const ordered = openRanked.length >= count ? [...openRanked, ...closedRanked] : ranked;
+  const ordered = ranked;
 
-  // Guarantee at least one hawker/kopitiam-style pick makes the winning
-  // set — otherwise the raw score, even with the boost above, can still
-  // lose to several very-high-review-count restaurants clustered at the
-  // top. This is a deliberate editorial floor, not just a scoring nudge:
-  // the category is too easily crowded out to leave to score alone.
+  // Guarantee at least one real hawker stall in the winning set. Stalls
+  // sit on a lower rung than named picks, so a cluster of cafes can
+  // otherwise crowd them out of a shortlist. Only address/centre hawkers
+  // qualify — a curated cafe is not a stall.
   const guaranteeSlot = Math.min(3, count); // still slot it in early even if the user asked for more than 3
   const poolSize = Math.min(ordered.length, count + 5); // a little padding beyond the "winners" for the reveal animation
   let topN = ordered.slice(0, poolSize);
@@ -490,7 +493,7 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
   }
 
   const winners = topN.slice(0, count);
-  const pool = topN.map(({ _score, _category, _openNow, _businessStatus, ...v }, i) => ({ ...v, win: i < count }));
+  const pool = topN.map(({ _score, _category, _openNow, _businessStatus, _rung, ...v }, i) => ({ ...v, win: i < count }));
 
   // "Near MRT only" is now a soft preference rather than a hard filter, so
   // there's no all-or-nothing fallback to react to — just tell the user
@@ -499,9 +502,10 @@ async function runPipeline({ lat, lng, radiusKm, budget, partySize, prefs, recen
 
   const out = { pool, guideYear: michelin.year, transitOnly, transitFallback };
   if (debug) {
-    out.debugPool = ranked.map((v, i) => ({
-      name: v.name, score: Math.round(v._score * 10) / 10, category: v._category,
-      tags: v.tags, won: i < winners.length, businessStatus: v._businessStatus || null,
+    out.debugPool = ranked.map((v) => ({
+      name: v.name, score: Math.round(v._score * 10) / 10, rung: v._rung, category: v._category,
+      tags: v.tags, won: winners.some((w) => w.placeId && w.placeId === v.placeId),
+      businessStatus: v._businessStatus || null, why: v.why,
     }));
     out.debugRawFetchCount = shortlist.length; // includes resolved curated gems, post-merge
     out.debugGrounding = groundingDiag;
@@ -716,18 +720,24 @@ async function resolveCuratedGems({ lat, lng, radiusKm, apiKey, env }) {
           raw = await env.SEARCH_CACHE.get(cacheKey, "json");
         } catch { /* fall through to live lookup */ }
       }
-      if (!raw) {
+      if (raw) {
+        const cached = normalizePlace(raw, lat, lng);
+        if (cached.distanceKm == null || cached.distanceKm > radiusKm) return null;
+        return raw;
+      }
+      // No cached place: skip the Text Search when the listed area is
+      // clearly outside the search pin. Unknown areas still resolve.
+      if (gemAreaNearPin(gem.area, lat, lng, radiusKm) === false) return null;
+      try {
+        const [hit] = await searchTextRaw({ query: `${gem.name} ${gem.area} Singapore`, apiKey });
+        raw = hit || null;
+      } catch {
+        raw = null; // best-effort — one bad lookup shouldn't fail the whole request
+      }
+      if (raw && env.SEARCH_CACHE) {
         try {
-          const [hit] = await searchTextRaw({ query: `${gem.name} ${gem.area} Singapore`, apiKey });
-          raw = hit || null;
-        } catch {
-          raw = null; // best-effort — one bad lookup shouldn't fail the whole request
-        }
-        if (raw && env.SEARCH_CACHE) {
-          try {
-            await env.SEARCH_CACHE.put(cacheKey, JSON.stringify(raw), { expirationTtl: GEM_CACHE_TTL });
-          } catch { /* cache write failure is non-fatal */ }
-        }
+          await env.SEARCH_CACHE.put(cacheKey, JSON.stringify(raw), { expirationTtl: GEM_CACHE_TTL });
+        } catch { /* cache write failure is non-fatal */ }
       }
       return raw;
     })
@@ -804,13 +814,6 @@ function emojiForType(primaryType = "", types = []) {
   return "🍽️";
 }
 
-function haversineKm(lat1, lon1, lat2, lon2) {
-  if (lat2 == null || lon2 == null) return null;
-  const R = 6371, dLat = ((lat2 - lat1) * Math.PI) / 180, dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
-}
-
 // ---------- Gemini (grounded hype tagging) ----------
 
 async function fetchHypeTags({ venues, apiKey }) {
@@ -858,64 +861,28 @@ no prose, no markdown fences, in this exact shape:
 
 // ---------- Merge + rank ----------
 
-// Hawker/kopitiam-style food, mall/office food courts, and sit-down
-// restaurants are genuinely different categories, not one "cheap eats"
-// bucket. A hawker centre stall is usually independently run, single-dish
-// specialist, and reviewed less by its (often older, local) regulars — so
-// a modest review count at a high rating is still a strong signal, and
-// price is basically irrelevant since everything there is cheap anyway.
-// A food court (Kopitiam, Koufu, Food Republic, Food Junction and similar
-// mall/office chains) is commercially operated — closer in spirit to a
-// chain restaurant than a hawker centre — so it shouldn't inherit "gem"
-// status just for being cheap and under one roof. A sit-down restaurant or
-// cafe is judged fine by the existing rating x reviews formula, since its
-// review base is more consistent.
-//
-// Deliberately NOT matching on dish keywords ("noodle", "laksa", "chicken
-// rice" etc.) anymore — that caught plenty of proper sit-down restaurants
-// that just happen to serve those dishes, which is a false signal, not a
-// real one.
-const FOODCOURT_HINTS = /\bfood court\b|koufu|kopitiam|food republic|food junction|foodfare|deppa food hall|food opera/i;
-const HAWKER_HINTS = /\bhawker\b|\beating house\b|\bcoffee ?shop\b|\bfood centre\b|\bfood center\b/i;
-
-function classifyVenue(v, mich, curated) {
-  const text = `${v.name} ${v.typeLabel || ""} ${v.primaryType || ""}`;
-  // The address is a better signal than the stall's own name — a stall is
-  // rarely named "X Hawker Centre" itself, but its formattedAddress almost
-  // always names the building it's in ("2 Adam Rd, Adam Road Food Centre").
-  const address = v.formattedAddress || "";
-  if (FOODCOURT_HINTS.test(text) || FOODCOURT_HINTS.test(address)) return "foodcourt";
-  if (mich?.tier === "bib_gourmand") return "hawker"; // Singapore's own "hawker gem" recognition
-  if (HAWKER_HINTS.test(text) || HAWKER_HINTS.test(address)) return "hawker";
-  if (matchesKnownHawkerCentre(address)) return "hawker"; // e.g. "Chomp Chomp", "Tekka Centre" — names that don't contain the word "hawker" at all
-  // A food-media curated pick is, by construction, the kind of independent
-  // local favourite the hawker/kopitiam guarantee slot exists to protect —
-  // whether or not it happens to also match the name/address regexes above.
-  if (curated) return "hawker";
-  if (v.priceSymbol === "$" && (v.rating || 0) >= 4.3) return "hawker"; // fallback proxy — tightened bar now that dish keywords are gone
-  return "restaurant";
-}
-
 function mergeVenue(v, hype, mich, curated, prefs, recentPlaceIds, likedPlaceIds, stations, budget, transitOnly) {
   const tags = [];
   let source = "reviews";
   const nearStation = !!(stations && stations.length && nearestStationKm(v, stations) <= 0.45);
   if (nearStation) tags.push("Near MRT");
 
-  const category = classifyVenue(v, mich, curated);
+  const category = classifyVenue(v);
+  const isRecent = recentPlaceIds && v.id && recentPlaceIds.includes(v.id);
+  const isLiked = !!(likedPlaceIds && v.id && likedPlaceIds.includes(v.id));
+  const rung = venueRung({ isLiked, mich, curated, category });
 
-  // Curated MICHELIN tier takes priority — it's verified data, not inferred
   if (mich) {
     tags.push(mich.label);
     if (mich.green) tags.push("Green Star");
     source = "michelin";
   } else if (curated) {
-    tags.push(`${curated.source} pick`); // e.g. "Eatbook pick" — human-curated, not Places-inferred
+    tags.push(`${curated.source} pick`);
     source = "curated";
   } else if (category === "hawker") {
-    tags.push("Hawker gem");
+    tags.push("Hawker stall");
   } else if (category === "foodcourt") {
-    tags.push("Food court"); // informational, not celebratory — no score boost either
+    tags.push("Food court");
   }
   if (hype?.trending) { tags.push("Trending"); if (!mich) source = "trend"; }
   if (hype?.reviewedBy) tags.push(`@${hype.reviewedBy}`);
@@ -925,11 +892,10 @@ function mergeVenue(v, hype, mich, curated, prefs, recentPlaceIds, likedPlaceIds
   if (v.priceSymbol) metaParts.push(v.priceSymbol);
   if (v.openNow != null) metaParts.push(v.openNow ? "Open now" : "Closed now");
 
-  const isRecent = recentPlaceIds && v.id && recentPlaceIds.includes(v.id);
-  const isLiked = !!(likedPlaceIds && v.id && likedPlaceIds.includes(v.id));
   if (isLiked) tags.push("You liked this");
   else if (prefs?.novelty === "repeat" && isRecent) tags.push("A favorite of yours");
 
+  const ctx = { hype, mich, curated, prefs, isRecent, isLiked, category, budget, transitOnly, nearStation, rung };
   return {
     placeId: v.id || null,
     name: v.name,
@@ -939,77 +905,13 @@ function mergeVenue(v, hype, mich, curated, prefs, recentPlaceIds, likedPlaceIds
     source,
     tags,
     meta: metaParts.join(" · "),
-    _businessStatus: v._businessStatus || null, // carried through the rebuild for debugPool
-    why: michWhy(mich, v) || (curated ? `Named a ${curated.area} favourite by ${curated.source}` : null) || hype?.why || (v.openNow ? "Nearby and open now" : "Well rated nearby"),
-    _score: scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, transitOnly, nearStation, isLiked),
+    _businessStatus: v._businessStatus || null,
+    why: buildWhy({ rung, mich, curated, v }),
+    _score: scoreVenue(v, ctx),
     _category: category,
-    _openNow: v.openNow, // true/false/null — used in runPipeline to keep closed venues out of winning slots
+    _rung: rung,
+    _openNow: v.openNow,
   };
-}
-
-// ---------- Taste-preference scoring helpers ----------
-// All heuristic and additive — never hard-filter, since Places data is too
-// noisy to safely exclude venues outright (a false exclusion is worse than a
-// mild mis-ranking).
-
-const TRADITIONAL_HINTS = /hawker|kopitiam|food court|coffee house|zi char|teochew|hainanese|heritage/i;
-const MODERN_HINTS = /fine dining|contemporary|omakase|degustation|tasting menu|wine bar|cocktail/i;
-const HALAL_HINTS = /halal|muslim/i;
-const PORK_HINTS = /pork|bak kut teh|char siu|bak kwa|lard/i;
-const BEEF_HINTS = /beef|steak|wagyu/i;
-const VEGETARIAN_TYPES = /vegetarian|vegan/i;
-
-function stylePrefBonus(v, style) {
-  if (!style || style === "either") return 0;
-  const text = `${v.name} ${v.typeLabel || ""} ${(v.types || []).join(" ")}`;
-  if (style === "traditional") {
-    if (TRADITIONAL_HINTS.test(text)) return 3;
-    if (v.priceSymbol === "$") return 1;
-    if (MODERN_HINTS.test(text) || v.priceSymbol === "$$$") return -2;
-  }
-  if (style === "modern") {
-    if (MODERN_HINTS.test(text)) return 3;
-    if (v.priceSymbol === "$$$") return 2;
-    if (TRADITIONAL_HINTS.test(text)) return -1;
-  }
-  return 0;
-}
-
-function ambienceBonus(v, ambience) {
-  if (!ambience || ambience === "somewhat") return 0;
-  if (ambience === "important") {
-    if (v.priceSymbol === "$$$") return 2;
-    if (v.priceSymbol === "$$") return 1;
-    return -1;
-  }
-  if (ambience === "minimal") {
-    if (v.priceSymbol === "$") return 1;
-  }
-  return 0;
-}
-
-function dietaryBonus(v, dietary) {
-  if (!dietary || !dietary.length) return 0;
-  const text = `${v.name} ${v.typeLabel || ""}`;
-  const types = (v.types || []).join(" ");
-  let score = 0;
-  if (dietary.includes("vegetarian") || dietary.includes("vegan")) {
-    if (VEGETARIAN_TYPES.test(types) || VEGETARIAN_TYPES.test(text)) score += 4;
-  }
-  if (dietary.includes("halal")) {
-    if (HALAL_HINTS.test(text)) score += 4;
-    if (PORK_HINTS.test(text)) score -= 3;
-  }
-  if (dietary.includes("no_pork") && PORK_HINTS.test(text)) score -= 3;
-  if (dietary.includes("no_beef") && BEEF_HINTS.test(text)) score -= 3;
-  return score;
-}
-
-function noveltyBonus(novelty, isRecent) {
-  if (!novelty || novelty === "mix" || !isRecent) return 0;
-  if (novelty === "repeat") return 4; // resurface known favorites
-  if (novelty === "explore") return -6; // push already-visited spots down
-  return 0;
 }
 
 // Short "glance" line, styled like a Google listing snippet:
@@ -1032,84 +934,6 @@ function formatCount(n) {
   if (!n) return "0";
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
-}
-
-function michWhy(mich, v) {
-  if (!mich) return null;
-  const near = v.distanceKm != null ? ` · ${v.distanceKm}km away` : "";
-  const map = {
-    three_star: "Three MICHELIN stars",
-    two_star: "Two MICHELIN stars",
-    one_star: "MICHELIN starred",
-    bib_gourmand: "Bib Gourmand · great value",
-    selected: "In the MICHELIN Guide",
-  };
-  return (map[mich.tier] || "In the MICHELIN Guide") + near;
-}
-
-function scoreVenue(v, hype, mich, curated, prefs, isRecent, category, budget, transitOnly, nearStation, isLiked) {
-  // Cap the review-count signal — past a few thousand reviews it's telling
-  // you a place is a high-traffic fixture, not that it's better than a place
-  // with 800 reviews and a devoted following. Uncapped, this term let sheer
-  // footfall (chains, mall food courts) drown out smaller genuine standouts.
-  const cappedReviews = Math.min(v.reviewCount || 0, 3000);
-  let score = (v.rating || 0) * Math.log10(cappedReviews + 1);
-
-  // Beyond the cap, add a gentle negative pressure for venues with truly
-  // huge review counts (long-established, high-turnover fixtures) — a
-  // second, independent nudge on top of the cap so any hyper-saturated spot
-  // (not just the handful of hard-blocked mega-chains) drifts down rather
-  // than dominating purely on volume. A newly-opened outlet — whether an
-  // independent stall or a first-in-Singapore overseas chain — has a low
-  // review count regardless of brand, so this never penalises genuine
-  // newcomers, only places that have been the "safe default" for years.
-  if (v.reviewCount > 8000) score -= Math.min((v.reviewCount - 8000) / 4000, 3);
-
-  if (mich) score += mich.weight; // 10/9/8 stars, 6 bib, 3 selected
-  // Food-media curation is a second, independent discovery signal from
-  // Places' own popularity ranking (see curated-gems.js) — weighted per
-  // source tier (trusted YouTube creators > written food-media outlets),
-  // see SOURCE_WEIGHT in curated-gems.js. Even the lowest curated tier
-  // outweighs the plain "hawker" structural boost below, since a named
-  // blog/video pick is stronger evidence than a $ price + 4.3-rating guess.
-  if (curated && !mich) score += weightForSource(curated.source);
-  // Only true hawker/kopitiam gets the structural boost — food courts are
-  // commercially generic by nature and compete on raw merit only, same as
-  // any sit-down restaurant.
-  if (category === "hawker" && !mich && !curated) score += 4;
-  if (hype?.trending) score += 4;
-  if (hype?.reviewedBy) score += 2;
-  if (v.distanceKm != null) score -= v.distanceKm * 0.8;
-  if (v.openNow === false) score -= 3;
-  // A confirmed thumbs-up outweighs a curated blog mention but stays below a
-  // MICHELIN entry — the user's own verdict beats a stranger's recommendation,
-  // and "novelty: surprise" still gets to push it back down below.
-  if (isLiked) score += 8;
-
-  // Budget and "near MRT only" are preferences, not hard cutoffs (see
-  // runPipeline) — matches get a strong push up the ranking, confirmed
-  // mismatches a mild push down, and unknown/unpriced venues stay neutral
-  // rather than being penalised for data Google never gave us. This is what
-  // lets a narrow budget or a near-station requirement still fill out a full
-  // shortlist from the same search area instead of running out of matches.
-  if (budget && budget !== "any") {
-    const wanted = Array.isArray(budget) ? budget : [budget];
-    if (v.priceLevel && v.priceLevel !== "PRICE_LEVEL_UNSPECIFIED") {
-      score += wanted.some((b) => v.priceLevel === PRICE_MAP[b]) ? 6 : -4;
-    }
-  }
-  if (transitOnly) score += nearStation ? 6 : -3;
-  if (prefs) {
-    score += stylePrefBonus(v, prefs.style);
-    score += ambienceBonus(v, prefs.ambience);
-    score += dietaryBonus(v, prefs.dietary);
-    score += noveltyBonus(prefs.novelty, isRecent);
-  }
-  return score;
-}
-
-function rankVenues(venues) {
-  return [...venues].sort((a, b) => b._score - a._score);
 }
 
 // ---------- Fallback demo data (used if keys are missing or calls fail) ----------

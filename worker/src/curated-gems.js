@@ -315,6 +315,10 @@ export const SOURCE_WEIGHT = {
 };
 const DEFAULT_SOURCE_WEIGHT = 7; // any future source not listed above (e.g. ladyironchef, Miss Tam Chiak) defaults here
 
+export function isCreatorSource(source) {
+  return source === "GetFed" || source === "Alderic";
+}
+
 export function weightForSource(source) {
   return SOURCE_WEIGHT[source] ?? DEFAULT_SOURCE_WEIGHT;
 }

@@ -1345,7 +1345,9 @@ async function startShuffle(){
     await sleep(300); if (searchDone) return;
   }
 
-  runLine(`Filtering to ${budget==='any'?'any budget':budget} · open now`);
+  runLine(budget==='any'
+    ? 'Skipping closed spots'
+    : `Preferring ${Array.isArray(budget)?budget.join(' / '):budget} · skipping closed spots`);
   await sleep(300);
   document.querySelectorAll('.token').forEach(t=>{
     const item = livePool.find(p=>p.name===t.dataset.name);
@@ -1353,7 +1355,7 @@ async function startShuffle(){
   });
   await sleep(450); if (searchDone) return;
 
-  runLine('Weighing ratings, distance & your past picks');
+  runLine('Ranking by who named it, then how close');
   await sleep(750); if (searchDone) return;
 
   runLine(`Shortlisting the top ${livePool.filter(p=>p.win).length}`);

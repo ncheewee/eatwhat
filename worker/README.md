@@ -1,10 +1,9 @@
 # EatWhat API — Cloudflare Worker
 
 Backend for the EatWhat PWA. Takes location + budget + radius, calls Google
-Places for real nearby venues, calls Gemini (with Google Search grounding) to
-tag Michelin/trending/reviewed status, ranks the results, and caches the
-merged shortlist in KV for 12h so repeat searches in the same area are free
-and instant.
+Places for real nearby venues, injects nearby curated gems, ranks on a
+ladder (liked > Michelin > creator pick > food-media pick > hawker stall >
+everyone else), and caches the shortlist in KV for 12h.
 
 ## Prerequisites
 
@@ -48,8 +47,8 @@ Content-Type: application/json
   "lat": 1.2769,
   "lng": 103.8459,
   "radiusKm": 2,
-  "budget": "$$",     // "any" | "$" | "$$" | "$$$"
-  "partySize": 2
+  "budget": "$$",     // "any" | "$" | "$$" | "$$$" | ["$","$$"]
+  "count": 3
 }
 ```
 
@@ -59,8 +58,8 @@ Response:
 {
   "pool": [
     { "name": "...", "emoji": "🍜", "source": "trend|michelin|reviews",
-      "win": true, "tags": ["Trending"], "meta": "4.6 · 0.4km · $$ · Open now",
-      "why": "short reason" },
+      "win": true, "tags": ["Eatbook pick"], "meta": "4.6 · 0.4km · $$ · Open now",
+      "why": "Eatbook pick · $ · 4.6★ · 0.4km · open now" },
     ...
   ]
 }
