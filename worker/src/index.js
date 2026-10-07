@@ -27,6 +27,7 @@ import {
   buildWhy,
   rankVenues,
 } from "./rank.js";
+import { handleSpoonRequest } from "./spoon-api.js";
 
 // Tolerant truthiness for config flags. A value piped in via
 // `wrangler secret put` can arrive with a trailing newline, and a
@@ -39,8 +40,8 @@ function flagOn(v) {
 const CACHE_TTL_SECONDS = 60 * 60 * 12; // 12h — Michelin/trending data doesn't move fast
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 export default {
@@ -48,6 +49,11 @@ export default {
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: CORS_HEADERS });
     }
+
+    // Spoons are a separate recommendation. This returns null for /api/search
+    // and the other existing routes, which keep going below unchanged.
+    const spoonResponse = await handleSpoonRequest(request, env);
+    if (spoonResponse) return spoonResponse;
 
     const url = new URL(request.url);
 

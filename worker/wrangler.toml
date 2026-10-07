@@ -22,6 +22,9 @@ ENABLE_GROUNDING = "false"
 # After creating the KV namespace with:
 #   npx wrangler kv namespace create SEARCH_CACHE
 # paste the returned "id" below.
+# Spoon records share this namespace under the prefix spoon:v1: and are
+# stored with no expiry. Do not bulk-delete that prefix when clearing
+# search cache keys (search3:, gemplace2:, and the rest).
 [[kv_namespaces]]
 binding = "SEARCH_CACHE"
 id = "5c6c06693a404f949d3b3d81ce731004"

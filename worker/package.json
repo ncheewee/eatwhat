@@ -5,7 +5,7 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "test": "node --experimental-default-type=module --test src/rank.test.mjs"
+    "test": "node --experimental-default-type=module --test src/rank.test.mjs src/spoons.test.mjs"
   },
   "devDependencies": {
     "wrangler": "^3.90.0"

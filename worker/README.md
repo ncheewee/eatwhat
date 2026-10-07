@@ -69,6 +69,25 @@ If either API key is missing or a call fails, it returns `{ "pool": [...], "mock
 with demo data instead of erroring — the frontend can check `mock` and show a
 subtle "demo data" indicator if you want.
 
+## Spoons
+
+A separate store from the ranking ladder. People rate a place 1, 2, or 3
+spoons. A search shows those nearby on their own, and the engine never
+reads them. Records live in the existing KV namespace under `spoon:v1:`
+(no expiry). Do not delete that prefix when clearing search cache.
+
+```
+POST /api/session          { "credential": "<google id token>" }
+GET  /api/spoons/nearby?lat&lng&radiusKm
+GET  /api/spoons/mine      Authorization: Bearer <session>
+POST /api/spoons           { "placeId", "spoons": 1|2|3 }
+DELETE /api/spoons         { "placeId" }
+POST /api/places/find      { "query", "lat?", "lng?" }
+```
+
+`query` is a place name or a Google Maps link. The place's name and
+coordinates are taken from Google when a spoon is saved, not from the phone.
+
 ## Costs at MVP scale
 
 - Places API: 5,000 free calls/month, then ~$32/1,000 (Text/Nearby Search Pro SKU).

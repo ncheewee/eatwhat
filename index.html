@@ -67,10 +67,10 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 #gsiButton { min-height:44px }
 .login-note { font-size:12.5px; color:var(--tx2); text-align:center; line-height:1.5; max-width:280px; margin-top:6px }
 #hdr { padding:16px 18px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; gap:8px; border-bottom:1px solid var(--bd) }
-.hdr-left { display:flex; align-items:center; gap:10px }
+.hdr-left { display:flex; align-items:center; gap:10px; min-width:0; flex:1 }
 #backBtn { display:none; background:none; border:1px solid var(--bd); width:30px; height:30px; border-radius:50%; align-items:center; justify-content:center; cursor:pointer; font-size:16px; color:var(--tx) }
 #backBtn.show { display:flex }
-.logo { font-family:'Fraunces',serif; font-weight:600; font-size:21px; letter-spacing:.01em }
+.logo { font-family:'Fraunces',serif; font-weight:600; font-size:21px; letter-spacing:.01em; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .avatar-wrap { position:relative }
 .avatar { width:30px; height:30px; border-radius:50%; background:var(--sf2); border:1px solid var(--bd2); color:var(--tx); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; cursor:pointer }
 .menu { position:absolute; top:38px; right:0; background:var(--sf); border:1px solid var(--bd); border-radius:2px; padding:4px; min-width:160px; box-shadow:0 12px 28px rgba(0,0,0,.4); display:none; flex-direction:column; z-index:200 }
@@ -294,6 +294,21 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .stat-box .n { font-family:'Fraunces'; font-weight:600; font-size:22px; color:var(--am) }
 .stat-box .l { font-size:11px; color:var(--tx3); margin-top:2px; letter-spacing:.08em; text-transform:uppercase }
 
+/* SPOONS — a second recommendation, not part of the EatWhat ladder */
+.spoon-lane[hidden] { display:none }
+.lane-label { font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--tx3); padding:16px 0 6px }
+.spoon-row { display:flex; gap:10px; align-items:center; padding:12px 0; border-bottom:1px solid var(--bd) }
+.spoon-main { flex:1; min-width:0; text-decoration:none; color:inherit }
+.spoon-main .nm, .add-hit .nm { font-weight:600; font-size:15px; overflow-wrap:anywhere }
+.spoon-set { display:flex; gap:6px; align-items:center; flex-shrink:0 }
+.spoon-mark { font-size:16px; line-height:1 }
+.spoon-btn, .spoon-remove { min-width:36px; height:36px; padding:0 8px; border-radius:2px; border:1px solid var(--bd2); background:none; color:var(--tx2); font-family:inherit; font-weight:600; cursor:pointer }
+.spoon-btn.on { border-color:var(--am); color:var(--am); background:var(--amg) }
+.add-input { width:100%; padding:12px; border:1px solid var(--bd2); background:var(--sf); color:var(--tx); font:inherit; border-radius:3px }
+.add-input::placeholder { color:var(--tx3) }
+.add-hit { display:block; width:100%; text-align:left; background:none; border:none; border-bottom:1px solid var(--bd); color:inherit; font:inherit; padding:12px 0; cursor:pointer }
+#pickSpoons, #detailSpoons { margin-top:10px }
+
 /* SETTINGS */
 .set-row { display:flex; justify-content:space-between; align-items:center; padding:13px 0; border-bottom:1px solid var(--bd) }
 .set-row:last-child { border-bottom:none }
@@ -317,8 +332,8 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
 .area-row .ck { color:var(--am); font-size:14px; visibility:hidden }
 .area-row.active .ck { visibility:visible }
 .area-empty { text-align:center; color:var(--tx3); padding:24px 0; font-size:14px }
-#toast { position:fixed; top:16px; left:50%; transform:translateX(-50%) translateY(-60px); background:var(--sf2); border:1px solid var(--bd2); border-radius:2px; padding:9px 18px; font-size:14px; z-index:600; transition:transform .28s ease; white-space:nowrap; max-width:88vw; text-align:center; letter-spacing:.02em }
-#toast.show { transform:translateX(-50%) translateY(0) }
+#toast { position:fixed; bottom:calc(72px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%) translateY(12px); background:var(--sf2); border:1px solid var(--bd2); border-radius:2px; padding:9px 18px; font-size:14px; z-index:600; transition:transform .28s ease, opacity .28s ease; opacity:0; pointer-events:none; white-space:nowrap; max-width:88vw; text-align:center; letter-spacing:.02em }
+#toast.show { transform:translateX(-50%) translateY(0); opacity:1 }
 #toast.ok { border-color:var(--am); color:var(--am) }
 .thumbs-row { display:flex; gap:16px; justify-content:center; margin-top:12px }
 .thumb-btn { width:56px; height:56px; border-radius:50%; border:1px solid var(--bd2); background:var(--sf); font-size:25px; cursor:pointer }
@@ -469,6 +484,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
       <div class="pool-wrap">
         <div class="pool-count" id="poolCount"><b>0</b> candidates found</div>
         <div class="pool" id="pool"></div>
+        <div id="spoonLane" class="spoon-lane" hidden></div>
         <div class="finalists" id="finalists"></div>
       </div>
       <div class="skip-hint" id="skipHint">tap anywhere to skip</div>
@@ -506,6 +522,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
             <div class="tag-row" id="pickTags"></div>
             <div class="pick-meta" id="pickMeta"></div>
             <div class="why" id="pickWhy">Dinner · nearby · trending</div>
+            <div id="pickSpoons"></div>
             <div id="pickInsights"></div>
             <div class="action-row" id="pickActionRow">
               <button class="btn btn-ghost" style="width:100%" onclick="rerollPick()">Reroll</button>
@@ -529,6 +546,13 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
         <button class="round-btn yes" onclick="swipeCard(true)">♥</button>
       </div>
       <div class="muted" style="text-align:center" id="swipeProgress">1/4</div>
+    </div>
+
+    <!-- YOUR SPOONS -->
+    <div class="screen" id="screen-spoons">
+      <div style="font-weight:600;font-size:15px;letter-spacing:.03em;padding-top:16px">YOUR SPOONS</div>
+      <button class="btn btn-primary" onclick="openAddPlace()">Add a place</button>
+      <div id="mySpoonList"></div>
     </div>
 
     <!-- HISTORY -->
@@ -564,6 +588,9 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
     <button class="bn-item" id="bnHome" onclick="go('setup')">
       <span class="bn-icon">⌂</span><span class="bn-label">Home</span>
     </button>
+    <button class="bn-item" id="bnSpoons" onclick="go('spoons')">
+      <span class="bn-icon">🥄</span><span class="bn-label">Spoons</span>
+    </button>
     <button class="bn-item" id="bnHistory" onclick="go('history')">
       <span class="bn-icon">↺</span><span class="bn-label">History</span>
     </button>
@@ -587,6 +614,7 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
     <div class="tag-row" id="detailTags" style="margin-top:8px"></div>
     <div class="detail-meta" id="detailMeta"></div>
     <div class="detail-why" id="detailWhy"></div>
+    <div id="detailSpoons"></div>
     <div id="detailInsights"></div>
     <a class="detail-maps-link" id="detailMapsLink" href="#" target="_blank" rel="noopener">View on Google Maps ↗</a>
     <button class="btn btn-ghost" style="width:100%;margin-top:16px" onclick="closeDetail()">Close</button>
@@ -612,6 +640,18 @@ html,body { height:100%; background:var(--bg); color:var(--tx); overflow:hidden;
   <div class="spin-stage" id="spinStage"></div>
   <div class="spin-name" id="spinName"></div>
   <div class="spin-hint">tap anywhere to skip</div>
+</div>
+
+<div class="ov" id="addPlaceModal" onclick="if(event.target===this) closeAddPlace()">
+  <div class="modal">
+    <div class="mh"></div>
+    <div class="area-sheet-title">Add a place</div>
+    <input id="addPlaceQuery" class="add-input" placeholder="Name or Google Maps link" enterkeyhint="search" onkeydown="if(event.key==='Enter'){event.preventDefault();findPlaceToAdd()}">
+    <button class="btn btn-primary" style="margin-top:10px" onclick="findPlaceToAdd()">Find</button>
+    <div id="addPlaceResults"></div>
+    <div id="addPlaceSpoons"></div>
+    <button class="btn btn-ghost" style="width:100%;margin-top:16px" onclick="closeAddPlace()">Close</button>
+  </div>
 </div>
 
 <div class="ov" id="areaPickerModal" onclick="if(event.target===this) closeAreaPicker()">
@@ -656,11 +696,16 @@ function initGoogleAuth(){
   else google.accounts.id.prompt(); // One Tap, best-effort
 }
 
-function handleCredentialResponse(response){
+async function handleCredentialResponse(response){
   try {
     const payload = JSON.parse(atob(response.credential.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
     const user = { name: payload.name, email: payload.email, picture: payload.picture, sub: payload.sub };
     localStorage.setItem('eatwhat_user', JSON.stringify(user));
+    try {
+      await establishSession(response.credential);
+    } catch {
+      toast('Signed in. Spoons will work once the server accepts this sign-in.');
+    }
     showApp(user);
   } catch (e) {
     showLoginError("That sign-in didn't complete. Please try again.");
@@ -696,10 +741,14 @@ function showApp(user){
   history.replaceState({ screen: startScreen }, '', '#' + startScreen);
   renderScreen(startScreen);
   if (startScreen === 'setup') maybeAskFeedback();
+  warmMySpoons();
+  consumeShare();
 }
 
 function signOut(){
   localStorage.removeItem('eatwhat_user');
+  localStorage.removeItem('eatwhat_session');
+  mySpoonMap = {};
   document.getElementById('avatarEl').innerHTML = 'Me';
   document.getElementById('loginGate').classList.remove('hidden');
   document.getElementById('loginError').style.display = 'none';
@@ -902,7 +951,7 @@ function maybeAskFeedback(){
   setTimeout(() => document.getElementById('feedbackModal').classList.add('open'), 1200);
 }
 
-const TITLES = {taste:'Your taste', setup:'EatWhat', shuffle:'Finding spots', pick:'Today’s pick', group:'Together', history:'History', settings:'Settings'};
+const TITLES = {taste:'Your taste', setup:'EatWhat', shuffle:'Finding spots', pick:'Today’s pick', group:'Together', spoons:'Your spoons', history:'History', settings:'Settings'};
 function renderScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + id)?.classList.add('active');
@@ -920,6 +969,7 @@ function renderScreen(id) {
   if (id === 'group') setTimeout(initSwipe, 30);
   if (id === 'settings') renderSettingsTasteSummary();
   if (id === 'taste' && hasPrefs()) applyPrefsToTasteScreen(getPrefs());
+  if (id === 'spoons') renderMySpoons();
 }
 
 // In-app back-navigation stack: gesture-back and the header back button both
@@ -938,7 +988,7 @@ window.addEventListener('popstate', (e) => {
   closeDetail(); // any open modal shouldn't linger after a back navigation
 });
 
-const BOTTOM_NAV_MAP = { setup: 'bnHome', shuffle: 'bnHome', pick: 'bnHome', group: 'bnHome', history: 'bnHistory', taste: 'bnTaste' };
+const BOTTOM_NAV_MAP = { setup: 'bnHome', shuffle: 'bnHome', pick: 'bnHome', group: 'bnHome', spoons: 'bnSpoons', history: 'bnHistory', taste: 'bnTaste' };
 function updateBottomNav(id){
   const activeBtn = BOTTOM_NAV_MAP[id];
   document.querySelectorAll('.bn-item').forEach(b => b.classList.toggle('active', b.id === activeBtn));
@@ -1049,6 +1099,8 @@ function openDetail(idx){
   document.getElementById('detailTags').innerHTML = (item.tags||[]).map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join('');
   document.getElementById('detailMeta').innerHTML = (item.meta||'').split(' · ').map(m=>`<span>${m}</span>`).join('');
   document.getElementById('detailWhy').textContent = item.why || '';
+  const detailSpoons = document.getElementById('detailSpoons');
+  if (detailSpoons) detailSpoons.innerHTML = item.placeId ? spoonButtons(item.placeId, mySpoonMap[item.placeId]) : '';
   renderInsights(null);
   const mapsLink = document.getElementById('detailMapsLink');
   if (item.placeId){
@@ -1287,6 +1339,11 @@ async function startShuffle(){
   log.innerHTML=''; pool.innerHTML=''; pool.style.display='flex'; pool.style.opacity='1';
   finalistsEl.innerHTML=''; finalistsEl.classList.remove('show');
   actionsEl.classList.remove('show');
+  shortlistShown = false;
+  spoonsLoading = true;
+  SPOON_PLACES = [];
+  const spoonLane = document.getElementById('spoonLane');
+  if (spoonLane){ spoonLane.hidden = true; spoonLane.innerHTML = ''; }
   document.getElementById('searchTitle').textContent = 'Curating your shortlist';
   document.getElementById('skipHint').style.display='';
   document.getElementById('poolCount').innerHTML = '<b>0</b> candidates found';
@@ -1294,9 +1351,14 @@ async function startShuffle(){
   document.getElementById('searchSub').textContent = `${budgetLabel()} · ${whereLabel}${transitOnly?' · near MRT':''}`;
 
   // kick off the real call immediately, in parallel with the reasoning animation
-  const livePromise = resolveAnchor(areaName)
-    .then(loc => fetchLivePool({ ...loc, radiusKm, budget, transitOnly, count: suggestCount }))
+  const anchorPromise = resolveAnchor(areaName);
+  const livePromise = anchorPromise
+    .then(loc => { lastAnchor = loc; lastRadiusKm = radiusKm; return fetchLivePool({ ...loc, radiusKm, budget, transitOnly, count: suggestCount }); })
     .catch(() => null);
+  anchorPromise
+    .then(loc => fetchNearbySpoons(loc, radiusKm))
+    .then(places => { SPOON_PLACES = places || []; spoonsLoading = false; showSpoonLane(); })
+    .catch(() => { SPOON_PLACES = []; spoonsLoading = false; showSpoonLane(); });
 
   let count = 0;
   const addToken = (item)=>{
@@ -1420,6 +1482,8 @@ function restoreShuffle(){
     finalistsEl.appendChild(el);
   });
   document.getElementById('shuffleActions').classList.add('show');
+  shortlistShown = true;
+  showSpoonLane();
 }
 
 function finishSearch(usingMock){
@@ -1456,6 +1520,8 @@ function finishSearch(usingMock){
         setTimeout(()=>el.classList.add('in'), i*130);
       });
       setTimeout(()=>actionsEl.classList.add('show'), FINALISTS.length*130 + 300);
+      shortlistShown = true;
+      showSpoonLane();
     }, 350);
   }, 500);
 }
@@ -1684,6 +1750,8 @@ function paintPick(){
   document.getElementById('pickTags').innerHTML = c.tags.map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join('');
   document.getElementById('pickMeta').innerHTML = c.meta.split(' · ').map(m=>`<span>${m}</span>`).join('');
   document.getElementById('pickWhy').textContent = c.why;
+  const pickSpoons = document.getElementById('pickSpoons');
+  if (pickSpoons) pickSpoons.innerHTML = c.placeId ? spoonButtons(c.placeId, mySpoonMap[c.placeId]) : '';
   document.getElementById('rerollCount').textContent = rerolls ? `${rerolls} reroll${rerolls===1?'':'s'}` : '4s · 0 rerolls';
   document.getElementById('pickMapsLink').href = pickMapsUrl(c);
   loadPickDetail(c);
@@ -1804,6 +1872,275 @@ function swipeCard(liked){
   swipeIdx++;
   setTimeout(renderSwipeCard, 260);
 }
+
+// ---- Spoons (separate from the EatWhat pick) ----
+let mySpoonMap = {};
+let SPOON_PLACES = [];
+let spoonsLoading = false;
+let shortlistShown = false;
+let lastAnchor = null;
+let lastRadiusKm = 2;
+let ADD_RESULTS = [];
+
+async function establishSession(credential){
+  const res = await fetch(API_BASE + '/api/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.token) throw new Error(data.error || 'session');
+  localStorage.setItem('eatwhat_session', data.token);
+}
+
+function authHeaders(json){
+  const headers = {};
+  if (json) headers['Content-Type'] = 'application/json';
+  const token = localStorage.getItem('eatwhat_session');
+  if (token) headers.Authorization = 'Bearer ' + token;
+  return headers;
+}
+
+async function api(path, opts){
+  opts = opts || {};
+  const res = await fetch(API_BASE + path, {
+    method: opts.method || 'GET',
+    headers: authHeaders(opts.body != null),
+    body: opts.body,
+  });
+  let data = {};
+  try { data = await res.json(); } catch { data = {}; }
+  if (res.status === 401){
+    localStorage.removeItem('eatwhat_session');
+    requireSession();
+    throw new Error('signin');
+  }
+  if (!res.ok) throw new Error(data.error || 'request failed');
+  return data;
+}
+
+function requireSession(){
+  if (localStorage.getItem('eatwhat_session')) return true;
+  toast('Sign in again to save spoons');
+  const gate = document.getElementById('loginGate');
+  if (gate) gate.classList.remove('hidden');
+  return false;
+}
+
+async function warmMySpoons(){
+  if (!localStorage.getItem('eatwhat_session')) return;
+  try {
+    const data = await api('/api/spoons/mine');
+    mySpoonMap = {};
+    for (const p of data.places || []) mySpoonMap[p.placeId] = p.spoons;
+  } catch { /* the list screen reports its own failure */ }
+}
+
+async function fetchNearbySpoons(loc, radiusKm){
+  if (!loc) return [];
+  const q = new URLSearchParams({ lat: String(loc.lat), lng: String(loc.lng), radiusKm: String(radiusKm) });
+  try {
+    const res = await fetch(API_BASE + '/api/spoons/nearby?' + q, { headers: authHeaders(false) });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.places || [];
+  } catch {
+    return [];
+  }
+}
+
+function spoonButtons(placeId, current){
+  if (!placeId) return '';
+  const cur = Number(current) || 0;
+  const buttons = [1,2,3].map(n =>
+    `<button type="button" class="spoon-btn${cur===n?' on':''}" data-set-spoon="${escapeHtml(placeId)}" data-n="${n}" aria-label="${n} ${n===1?'spoon':'spoons'}">${n}</button>`
+  ).join('');
+  return `<div class="spoon-set"><span class="spoon-mark" aria-hidden="true">🥄</span>${buttons}</div>`;
+}
+
+function spoonPlaceRow(p){
+  const maps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name || 'restaurant')}&query_place_id=${encodeURIComponent(p.placeId)}`;
+  const dist = p.distanceKm != null ? ` · ${p.distanceKm}km` : '';
+  return `<div class="spoon-row">
+    <a class="spoon-main" href="${maps}" target="_blank" rel="noopener">
+      <div class="nm">${escapeHtml(p.name)}</div>
+      <div class="muted">${escapeHtml(p.line || '')}${dist}</div>
+      ${p.breakdown ? `<div class="muted">${escapeHtml(p.breakdown)}</div>` : ''}
+    </a>
+    ${spoonButtons(p.placeId, mySpoonMap[p.placeId])}
+  </div>`;
+}
+
+function showSpoonLane(){
+  if (!shortlistShown) return;
+  const el = document.getElementById('spoonLane');
+  if (!el) return;
+  el.hidden = false;
+  const rows = (SPOON_PLACES || []).map(spoonPlaceRow).join('');
+  const body = spoonsLoading
+    ? '<div class="muted">Looking for spoons nearby…</div>'
+    : (rows || '<div class="muted">No spoons in this search yet.</div>');
+  el.innerHTML = `<div class="lane-label">From people</div>${body}<div class="lane-label">From EatWhat</div>`;
+}
+
+async function renderMySpoons(){
+  const el = document.getElementById('mySpoonList');
+  if (!el) return;
+  if (!localStorage.getItem('eatwhat_session')){
+    el.innerHTML = '<div class="muted">Sign in again to see your places.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="muted">Loading…</div>';
+  try {
+    const data = await api('/api/spoons/mine');
+    const places = data.places || [];
+    mySpoonMap = {};
+    for (const p of places) mySpoonMap[p.placeId] = p.spoons;
+    el.innerHTML = places.length ? places.map(spoonMineRow).join('') : '<div class="muted">No places yet.</div>';
+  } catch (e) {
+    if (e.message === 'signin') el.innerHTML = '';
+    else el.innerHTML = '<div class="muted">Couldn’t load your places.</div>';
+  }
+}
+
+function spoonMineRow(p){
+  const maps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name || 'restaurant')}&query_place_id=${encodeURIComponent(p.placeId)}`;
+  return `<div class="spoon-row">
+    <a class="spoon-main" href="${maps}" target="_blank" rel="noopener"><div class="nm">${escapeHtml(p.name)}</div></a>
+    ${spoonButtons(p.placeId, p.spoons)}
+    <button type="button" class="spoon-remove" data-remove-spoon="${escapeHtml(p.placeId)}" aria-label="Remove">✕</button>
+  </div>`;
+}
+
+function paintSpoonSets(placeId){
+  document.querySelectorAll('.spoon-set').forEach(el => {
+    const btn = el.querySelector('[data-set-spoon]');
+    if (!btn || btn.getAttribute('data-set-spoon') !== placeId) return;
+    el.outerHTML = spoonButtons(placeId, mySpoonMap[placeId]);
+  });
+}
+
+async function setSpoon(placeId, n){
+  if (!placeId || ![1, 2, 3].includes(n)) return;
+  if (!requireSession()) return;
+  try {
+    await api('/api/spoons', { method: 'POST', body: JSON.stringify({ placeId, spoons: n }) });
+  } catch (e) {
+    if (e.message !== 'signin') toast(e.message || 'Couldn’t save that spoon');
+    return;
+  }
+  mySpoonMap[placeId] = n;
+  toast(n === 1 ? '1 spoon' : (n + ' spoons'), 'ok');
+  paintSpoonSets(placeId);
+  if (document.getElementById('screen-spoons')?.classList.contains('active')) renderMySpoons();
+  if (document.getElementById('addPlaceModal')?.classList.contains('open')) closeAddPlace();
+  if (lastAnchor){
+    fetchNearbySpoons(lastAnchor, lastRadiusKm).then(places => {
+      SPOON_PLACES = places || [];
+      spoonsLoading = false;
+      showSpoonLane();
+    });
+  }
+}
+
+async function removeSpoon(placeId){
+  if (!requireSession()) return;
+  try {
+    await api('/api/spoons', { method: 'DELETE', body: JSON.stringify({ placeId }) });
+  } catch (e) {
+    if (e.message !== 'signin') toast('Couldn’t remove that');
+    return;
+  }
+  delete mySpoonMap[placeId];
+  toast('Removed', 'ok');
+  renderMySpoons();
+  if (lastAnchor){
+    fetchNearbySpoons(lastAnchor, lastRadiusKm).then(places => {
+      SPOON_PLACES = places || [];
+      showSpoonLane();
+    });
+  }
+}
+
+function openAddPlace(prefill, autorun){
+  const input = document.getElementById('addPlaceQuery');
+  const results = document.getElementById('addPlaceResults');
+  const chosen = document.getElementById('addPlaceSpoons');
+  if (input) input.value = prefill || '';
+  if (results) results.innerHTML = '';
+  if (chosen) chosen.innerHTML = '';
+  ADD_RESULTS = [];
+  document.getElementById('addPlaceModal').classList.add('open');
+  if (autorun && prefill) findPlaceToAdd();
+}
+
+function closeAddPlace(){
+  document.getElementById('addPlaceModal').classList.remove('open');
+}
+
+async function findPlaceToAdd(){
+  if (!requireSession()) return;
+  const query = document.getElementById('addPlaceQuery').value.trim();
+  const box = document.getElementById('addPlaceResults');
+  document.getElementById('addPlaceSpoons').innerHTML = '';
+  if (!query){ box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="muted">Looking…</div>';
+  try {
+    const anchor = lastAnchor || await resolveAnchor(getSetupValues().areaName);
+    const data = await api('/api/places/find', {
+      method: 'POST',
+      body: JSON.stringify({ query, lat: anchor.lat, lng: anchor.lng }),
+    });
+    ADD_RESULTS = data.places || [];
+    if (!ADD_RESULTS.length){ box.innerHTML = '<div class="muted">Nothing matched.</div>'; return; }
+    box.innerHTML = ADD_RESULTS.map((p, i) =>
+      `<button type="button" class="add-hit" data-add-index="${i}"><div class="nm">${escapeHtml(p.name)}</div><div class="muted">${escapeHtml(p.address || '')}</div></button>`
+    ).join('');
+    if (ADD_RESULTS.length === 1) chooseAddPlace(0);
+  } catch (e) {
+    if (e.message !== 'signin') box.innerHTML = `<div class="muted">${escapeHtml(e.message || 'Couldn’t look that up.')}</div>`;
+    else box.innerHTML = '';
+  }
+}
+
+function chooseAddPlace(index){
+  const place = ADD_RESULTS[index];
+  if (!place) return;
+  document.getElementById('addPlaceSpoons').innerHTML = `
+    <div class="nm" style="margin-top:14px">${escapeHtml(place.name)}</div>
+    <div class="muted" style="margin:4px 0 10px">${escapeHtml(place.address || '')}</div>
+    ${spoonButtons(place.placeId, mySpoonMap[place.placeId] || 0)}`;
+}
+
+function stashShare(){
+  const q = new URLSearchParams(location.search);
+  const url = q.get('url') || '';
+  const text = q.get('text') || '';
+  const title = q.get('title') || '';
+  const blob = [title, text, url].filter(Boolean).join('\n');
+  if (!blob || !/https?:\/\/|maps/i.test(blob)) return;
+  sessionStorage.setItem('eatwhat_share', blob);
+  history.replaceState(history.state, '', location.pathname + (location.hash || ''));
+}
+
+function consumeShare(){
+  const blob = sessionStorage.getItem('eatwhat_share');
+  if (!blob || !localStorage.getItem('eatwhat_session')) return;
+  sessionStorage.removeItem('eatwhat_share');
+  openAddPlace(blob, true);
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-set-spoon], [data-remove-spoon], [data-add-index]');
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (btn.hasAttribute('data-set-spoon')) setSpoon(btn.getAttribute('data-set-spoon'), Number(btn.dataset.n));
+  else if (btn.hasAttribute('data-remove-spoon')) removeSpoon(btn.getAttribute('data-remove-spoon'));
+  else chooseAddPlace(Number(btn.dataset.addIndex));
+}, true);
+
+stashShare();
 
 // ---- Settings ----
 function toggleSwitch(el, isDark){
